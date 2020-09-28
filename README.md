@@ -1,3 +1,5 @@
+![TypedWorkflow Logo](/icon.png)
+
 # General description
 Allows you to create a simple workflow structure from specially marked up handler methods, in which the input and output types are the links between the work items.
 
