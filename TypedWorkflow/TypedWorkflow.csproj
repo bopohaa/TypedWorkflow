@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Nikolay Vorobev</Authors>
+    <Company></Company>
+    <Description>Allows you to create a simple workflow structure from specially marked up handler methods, in which the input and output types are the links between the work items.</Description>
+    <Copyright>Copyright © 2020 Nikolay Vorobev</Copyright>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageProjectUrl>https://github.com/bopohaa/TypedWorkflow</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/bopohaa/TypedWorkflow.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>workflow type graph ioc di framework</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\icon.png">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
+    <None Include="..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
+  </ItemGroup>
+
+</Project>
