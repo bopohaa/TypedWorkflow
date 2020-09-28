@@ -34,8 +34,6 @@ namespace TypedWorkflowTests
             Task.WaitAll(tasks);
             var builderResult = resolver.Sb.ToString();
 
-            container.Run().AsTask().Wait();
-
             Assert.AreEqual(1 + ITERATION_CNT, resolver.ResolveCount);
             Assert.IsTrue(SingleComponent.Assert(ITERATION_CNT));
             Assert.IsTrue(DiCiComponent.Assert(builderResult, ITERATION_CNT));
