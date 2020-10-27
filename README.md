@@ -1,3 +1,5 @@
+![TypedWorkflow Logo](/icon.png)
+
 # General description
 Allows you to create a simple workflow structure from specially marked up handler methods, in which the input and output types are the links between the work items.
 
@@ -21,7 +23,7 @@ public class OtherSimpleComponent
 }
 
 ```
-> For such a system to work, one mandatory rule must be observed - **uniqueness of the return type of the handler method **.
+> For such a system to work, one mandatory rule must be observed - **uniqueness of the return type of the handler method**.
 
 The following code cannot be executed:
 ```C#
@@ -38,7 +40,7 @@ public class OtherSimpleComponent
         => 2;
 }
 ```
-> The second mandatory rule is that - **all return types must be in the input parameters of the handler methods **.
+> The second mandatory rule is that - **all return types must be in the input parameters of the handler methods**.
 
 When trying to execute this schema, the framework will throw an exception due to the presence of an unused `int` parameter
 ```C#
