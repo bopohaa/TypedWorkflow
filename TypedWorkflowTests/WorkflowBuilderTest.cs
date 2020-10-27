@@ -44,6 +44,7 @@ namespace TypedWorkflowTests
             Assert.IsTrue(AsyncComponent.Assert(ITERATION_CNT));
             Assert.IsTrue(CustomConstructorComponent.Assert(builderResult, ITERATION_CNT));
             Assert.IsTrue(WithPriorityComponent.Assert(ITERATION_CNT));
+            Assert.IsTrue(OptionalComponent.Assert(ITERATION_CNT));
         }
     }
 }

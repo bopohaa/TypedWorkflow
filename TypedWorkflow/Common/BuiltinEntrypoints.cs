@@ -5,9 +5,13 @@ namespace TypedWorkflow.Common
 {
     internal class InitialEntrypoint : IEntrypoint
     {
-        public Type[] Export { get; }
+        private readonly Type[] _export;
+        public Type[] Export => _export;
+        private readonly bool[] _exportIsOption;
+        public bool[] ExportIsOption => _exportIsOption;
 
         public Type[] Import => Array.Empty<Type>();
+        public bool[] ImportIsOption => Array.Empty<bool>();
 
         public Type InstanceType => typeof(InitialEntrypoint);
 
@@ -17,20 +21,19 @@ namespace TypedWorkflow.Common
 
         public InitialEntrypoint(Type[] exports)
         {
-            Export = exports;
+            var (export, exportIsOptions) = ExpressionFactory.GetExpandedTypes(exports);
+            _export = export;
+            _exportIsOption = exportIsOptions;
         }
 
-        public int Execute(object instance, object[] args, object[] output)
+        public void Execute(object instance, object[] args, object[] output)
         {
-            if (args.Length != Export.Length)
+            if (args.Length != _export.Length)
                 throw new InvalidOperationException("Invalid import");
-
-            for (var i = 0; i < args.Length; ++i)
-                output[i] = args[i];
-            return args.Length;
+            Array.Copy(args, output, args.Length);
         }
 
-        public Task<int> ExecuteAsync(object instance, object[] args, object[] output)
+        public Task ExecuteAsync(object instance, object[] args, object[] output)
         {
             throw new NotImplementedException();
         }
@@ -38,9 +41,13 @@ namespace TypedWorkflow.Common
 
     internal class ResultEntrypoint : IEntrypoint
     {
-        public Type[] Import { get; }
+        private readonly Type[] _import;
+        public Type[] Import => _import;
+        private readonly bool[] _importIsOption;
+        public bool[] ImportIsOption => _importIsOption;
 
         public Type[] Export => Array.Empty<Type>();
+        public bool[] ExportIsOption => Array.Empty<bool>();
 
         public Type InstanceType => typeof(InitialEntrypoint);
 
@@ -50,17 +57,18 @@ namespace TypedWorkflow.Common
 
         public ResultEntrypoint(Type[] imports)
         {
-            Import = imports;
+            var (import, importIsOptions) = ExpressionFactory.GetExpandedTypes(imports);
+            _import = import;
+            _importIsOption = importIsOptions;
         }
 
-        public int Execute(object instance, object[] args, object[] output)
+        public void Execute(object instance, object[] args, object[] output)
         {
-            if (args.Length != Import.Length)
+            if (args.Length != _import.Length)
                 throw new InvalidOperationException("Invalid import");
-            return 0;
         }
 
-        public Task<int> ExecuteAsync(object instance, object[] args, object[] output)
+        public Task ExecuteAsync(object instance, object[] args, object[] output)
         {
             throw new NotImplementedException();
         }

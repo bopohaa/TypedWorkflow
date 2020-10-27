@@ -13,6 +13,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>workflow type graph ioc di framework</PackageTags>
     <PackageIcon>icon.png</PackageIcon>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

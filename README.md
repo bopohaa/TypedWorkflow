@@ -119,6 +119,29 @@ public class SimpleComponent
 }
 ```
 
+## Optional parameters
+Skip execution of a handler method depending on the value of the result.
+If the result model is wrapped in a `TypedWorkflow.Option` wrapper, then it will allow returning an empty value as a response.
+
+Handler methods whose model values cannot be empty (not wrapped by `TypedWorkflow.Option`) will be skipped if the values of these models are empty.
+Thus, all handler methods dependent on the execution result will be skipped.
+
+```C#
+public class SimpleComponent
+{
+    [TwEntrypoint]
+    public TypedWorkflow.Option<int> Run()
+        => TypedWorkflow.Option<float>.None;
+
+    [TwEntrypoint]
+    public float NeverRun(int i)
+        => i * 2.0;
+
+    [TwEntrypoint]
+    public void NeverRun(float i) {}
+}
+```
+
 ## Performance issues
 * Return instances of classes, not structures (the mechanism of boxing and unboxing in cases of calling handler methods through the use of reflection nullifies all the advantages of structures).
 * If possible, use `singlеton` components (for this you need to mark a class with handler methods with a special attribute` TwSingletonAttribute`).

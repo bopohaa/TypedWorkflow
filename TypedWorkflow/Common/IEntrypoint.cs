@@ -6,12 +6,14 @@ namespace TypedWorkflow.Common
     internal interface IEntrypoint
     {
         Type[] Export { get; }
+        bool[] ExportIsOption { get; }
         Type[] Import { get; }
+        bool[] ImportIsOption { get; }
         Type InstanceType { get; }
         TwEntrypointPriorityEnum Priority { get; }
         bool IsAsync { get; }
 
-        int Execute(object instance, object[] args, object[] output);
-        Task<int> ExecuteAsync(object instance, object[] args, object[] output);
+        void Execute(object instance, object[] args, object[] output);
+        Task ExecuteAsync(object instance, object[] args, object[] output);
     }
 }

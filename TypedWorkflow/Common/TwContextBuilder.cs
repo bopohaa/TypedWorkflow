@@ -14,6 +14,9 @@ namespace TypedWorkflow.Common
         private readonly List<int[]> _exportIndex;
         private readonly List<int[]> _importIndex;
         private readonly List<int> _executeList;
+        private readonly List<ExpressionFactory.Activator> _exportOptionNoneFactories;
+        private readonly List<ExpressionFactory.Activator> _exportOptionSomeFactories;
+
         private int _exportCnt;
         private TwContextMeta _contextmeta;
         private int _initialEntrypointIdx = -1;
@@ -27,6 +30,8 @@ namespace TypedWorkflow.Common
             _exportIndex = new List<int[]>();
             _importIndex = new List<int[]>();
             _executeList = new List<int>();
+            _exportOptionNoneFactories = new List<ExpressionFactory.Activator>();
+            _exportOptionSomeFactories = new List<ExpressionFactory.Activator>();
         }
 
         public TwContextBuilder AddEntrypointMethod(MethodInfo method, TwEntrypointPriorityEnum priority)
@@ -104,6 +109,10 @@ namespace TypedWorkflow.Common
 
                 var exportIndex = GetExportIndex(exportTypes, entryPoint.Export, entryPoint.InstanceType);
                 _exportIndex.Add(exportIndex);
+
+                var (none, some) = GetExportOptionFactory(entryPoint.Export);
+                _exportOptionNoneFactories.AddRange(none);
+                _exportOptionSomeFactories.AddRange(some);
             }
 
             _exportCnt = exportTypes.Count;
@@ -137,7 +146,7 @@ namespace TypedWorkflow.Common
             if (_contextmeta.IsEmpty)
             {
                 var scopedInstances = _scopedInstances.Where(e => e.Item2 != null).Select(e => (e.Item1, e.Item2.ToArray()));
-                _contextmeta = new TwContextMeta(_entrypoints.ToArray(), _instances.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx);
+                _contextmeta = new TwContextMeta(_entrypoints.ToArray(), _instances.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx, _exportOptionNoneFactories.ToArray(), _exportOptionSomeFactories.ToArray());
             }
 
             return new TwContext(_contextmeta);
@@ -221,6 +230,27 @@ namespace TypedWorkflow.Common
             }
 
             return index;
+        }
+
+        private static (ExpressionFactory.Activator[] none, ExpressionFactory.Activator[] some) GetExportOptionFactory(Type[] exports)
+        {
+            var length = exports.Length;
+            var resNone = new ExpressionFactory.Activator[length];
+            var resSome = new ExpressionFactory.Activator[length];
+
+            for (var i = 0; i < length; i++)
+            {
+                var export = exports[i];
+                var optionExport = typeof(Option<>).MakeGenericType(export);
+                var constructorNone = optionExport.GetConstructor(Array.Empty<Type>());
+                var constructorSome = optionExport.GetConstructor(new[] { export });
+                var (activatorNone, _) = ExpressionFactory.GetActivator(constructorNone);
+                var (activatorSome, _) = ExpressionFactory.GetActivator(constructorSome);
+                resNone[i] = activatorNone;
+                resSome[i] = activatorSome;
+            }
+
+            return (resNone, resSome);
         }
     }
 }

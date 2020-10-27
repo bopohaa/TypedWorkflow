@@ -9,6 +9,8 @@ namespace TypedWorkflow.Common
     {
         private readonly TwContextMeta _meta;
         private readonly object[] _exportInstances;
+        private readonly Option[] _exportOptionInstances;
+        private readonly bool[] _exportInstanceIsNone;
         private readonly object[][] _inputArgs;
         private readonly object[] _output;
         private object[] _instances;
@@ -17,6 +19,8 @@ namespace TypedWorkflow.Common
         {
             _meta = meta;
             _exportInstances = new object[_meta.ExportCnt];
+            _exportInstanceIsNone = new bool[_meta.ExportCnt];
+            _exportOptionInstances = new Option[_meta.ExportCnt];
             _inputArgs = new object[_meta.Entrypoints.Length][];
             _output = new object[256];
             for (var i = 0; i < _meta.ImportIndex.Length; ++i)
@@ -66,26 +70,82 @@ namespace TypedWorkflow.Common
                 {
                     var entry = _meta.Entrypoints[idx];
                     var instance = _instances[idx];
+                    var outputArgs = _meta.ExportIndex[idx];
                     var inputArgs = _meta.ImportIndex[idx];
                     var input = _meta.InitialEntrypointIdx == idx ? initial_imports : _inputArgs[idx];
-                    for (int i = 0; i < inputArgs.Length; ++i)
-                        input[i] = _exportInstances[inputArgs[i]];
+                    int loaded = LoadInput(entry, inputArgs, input);
+                    if (loaded < inputArgs.Length)
+                    {
+                        SaveOutputAsNone(outputArgs);
+                        continue;
+                    }
 
-                    var outputCnt = entry.IsAsync ?
-                        await entry.ExecuteAsync(instance, input, _output) :
+                    if (entry.IsAsync)
+                        await entry.ExecuteAsync(instance, input, _output);
+                    else
                         entry.Execute(instance, input, _output);
 
-                    var outputArgs = _meta.ExportIndex[idx];
-                    if (outputCnt != outputArgs.Length)
-                        throw new InvalidOperationException("Invalid result");
-
-                    for (int i = 0; i < outputCnt; ++i)
-                        _exportInstances[outputArgs[i]] = _output[i];
+                    SaveOutput(entry, outputArgs, _output);
                 }
             }
             finally
             {
                 DisposeScopedInstances();
+            }
+        }
+
+        private int LoadInput(IEntrypoint entry, int[] inputArgs, object[] input)
+        {
+            int i = 0;
+            for (; i < inputArgs.Length; ++i)
+            {
+                var idx = inputArgs[i];
+                var d = _exportInstances[idx];
+                if (entry.ImportIsOption[i])
+                {
+                    var opt = _exportOptionInstances[idx];
+                    if (opt == null)
+                    {
+                        opt = (Option)(_exportInstanceIsNone[idx] ? _meta.ExportOptionNoneFactories[idx]() : _meta.ExportOptionNoneFactories[idx](d));
+                        _exportOptionInstances[idx] = opt;
+                    }
+                    d = opt;
+                }
+                else if (_exportInstanceIsNone[idx])
+                    break;
+                input[i] = d;
+            }
+
+            return i;
+        }
+
+        private void SaveOutputAsNone(int[] outputArgs)
+        {
+            for (var i = 0; i < outputArgs.Length; i++)
+            {
+                var j = outputArgs[i];
+                _exportInstances[j] = null;
+                _exportInstanceIsNone[j] = true;
+            }
+        }
+
+        private void SaveOutput(IEntrypoint entry, int[] outputArgs, object[] output)
+        {
+            for (int i = 0; i < outputArgs.Length; ++i)
+            {
+                var idx = outputArgs[i];
+                if (entry.ExportIsOption[i])
+                {
+                    var e = (Option)output[i];
+                    _exportInstances[idx] = e.Value;
+                    _exportInstanceIsNone[idx] = !e.HasValue;
+                    _exportOptionInstances[idx] = e;
+                }
+                else
+                {
+                    _exportInstances[idx] = output[i];
+                    _exportInstanceIsNone[idx] = false;
+                }
             }
         }
 
