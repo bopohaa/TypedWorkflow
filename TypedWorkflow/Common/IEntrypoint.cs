@@ -5,6 +5,7 @@ namespace TypedWorkflow.Common
 {
     internal interface IEntrypoint
     {
+        TwConstraint[] Constraints { get; }
         Type[] Export { get; }
         bool[] ExportIsOption { get; }
         Type[] Import { get; }

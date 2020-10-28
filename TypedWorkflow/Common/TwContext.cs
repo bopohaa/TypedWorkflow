@@ -73,7 +73,7 @@ namespace TypedWorkflow.Common
                     var outputArgs = _meta.ExportIndex[idx];
                     var inputArgs = _meta.ImportIndex[idx];
                     var input = _meta.InitialEntrypointIdx == idx ? initial_imports : _inputArgs[idx];
-                    int loaded = LoadInput(entry, inputArgs, input);
+                    int loaded = CheckConstraints(idx) ? LoadInput(entry, inputArgs, input) : -1;
                     if (loaded < inputArgs.Length)
                     {
                         SaveOutputAsNone(outputArgs);
@@ -92,6 +92,20 @@ namespace TypedWorkflow.Common
             {
                 DisposeScopedInstances();
             }
+        }
+
+        private bool CheckConstraints(int entrypoint_idx)
+        {
+            var constraints = _meta.ConstraintIndex[entrypoint_idx];
+            
+            for (var i = 0; i < constraints.Length; i++)
+            {
+                var isNone = _exportInstanceIsNone[constraints[i].Index];
+                if (constraints[i].HasNone != isNone)
+                    return false;
+            }
+
+            return true;
         }
 
         private int LoadInput(IEntrypoint entry, int[] inputArgs, object[] input)

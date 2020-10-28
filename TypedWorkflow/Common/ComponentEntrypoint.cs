@@ -30,7 +30,10 @@ namespace TypedWorkflow.Common
 
         public bool IsAsync { get; }
 
-        private ComponentEntrypoint(Type instance_type, ExpressionFactory.Call method, ExpressionFactory.GetProperty<object> task_result_prop, Type[] imports, Type[] exports, FieldInfo[] tuple_fields, TwEntrypointPriorityEnum priority, bool is_async)
+        private readonly TwConstraint[] _constraints;
+        public TwConstraint[] Constraints => _constraints;
+
+        private ComponentEntrypoint(Type instance_type, ExpressionFactory.Call method, ExpressionFactory.GetProperty<object> task_result_prop, Type[] imports, Type[] exports, TwConstraint[] constraints, FieldInfo[] tuple_fields, TwEntrypointPriorityEnum priority, bool is_async)
         {
             _method = method;
             _taskResultPoperty = task_result_prop;
@@ -47,6 +50,8 @@ namespace TypedWorkflow.Common
             var (import, importIsOptions) = ExpressionFactory.GetExpandedTypes(imports);
             _import = import;
             _importIsOption = importIsOptions;
+
+            _constraints = constraints;
         }
 
         public void Execute(object instance, object[] args, object[] output)
@@ -85,7 +90,18 @@ namespace TypedWorkflow.Common
             var tupleFields = isMultipleRet ? export.GetFields() : null;
             var callMethod = ExpressionFactory.GetMethodExecutor(method);
 
-            return new ComponentEntrypoint(type, callMethod, getTaskResultProperty, imports, exports, tupleFields, priority, isAsync);
+            var constraints = GetConstraints(method, type);
+
+            return new ComponentEntrypoint(type, callMethod, getTaskResultProperty, imports, exports, constraints, tupleFields, priority, isAsync);
+        }
+
+        private static TwConstraint[] GetConstraints(MethodInfo method, Type type)
+        {
+            Func<MemberInfo, IEnumerable<TwConstraint>> getConstraints = e => e.GetCustomAttributes<TwConstraintAttribute>(true).Select(a =>new TwConstraint(a.Constraint, a.HasNone));
+            var entrypointConstraints =  getConstraints(method);
+            var classConstraints = getConstraints(type);
+            var constraints = classConstraints.Concat(entrypointConstraints).ToArray();
+            return constraints;
         }
 
         private void ExpandResult(object result, object[] output)
@@ -101,6 +117,5 @@ namespace TypedWorkflow.Common
             for (int i = 0; i < _tupleFields.Length; ++i)
                 output[i] = _tupleFields[i].GetValue(result);
         }
-
     }
 }

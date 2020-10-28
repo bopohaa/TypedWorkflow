@@ -13,6 +13,7 @@ namespace TypedWorkflow.Common
         private readonly List<(TwComponentFactory, List<int>)> _scopedInstances;
         private readonly List<int[]> _exportIndex;
         private readonly List<int[]> _importIndex;
+        private readonly List<TwConstraintIndex[]> _constraintIndex;
         private readonly List<int> _executeList;
         private readonly List<ExpressionFactory.Activator> _exportOptionNoneFactories;
         private readonly List<ExpressionFactory.Activator> _exportOptionSomeFactories;
@@ -29,6 +30,7 @@ namespace TypedWorkflow.Common
             _scopedInstances = new List<(TwComponentFactory, List<int>)>();
             _exportIndex = new List<int[]>();
             _importIndex = new List<int[]>();
+            _constraintIndex = new List<TwConstraintIndex[]>();
             _executeList = new List<int>();
             _exportOptionNoneFactories = new List<ExpressionFactory.Activator>();
             _exportOptionSomeFactories = new List<ExpressionFactory.Activator>();
@@ -121,6 +123,9 @@ namespace TypedWorkflow.Common
             {
                 var importIndex = GetImportIndex(exportTypes, entryPoint.Import, entryPoint.InstanceType);
                 _importIndex.Add(importIndex);
+
+                var constraintIndex = GetConstraintIndex(exportTypes, entryPoint.Constraints, entryPoint.InstanceType);
+                _constraintIndex.Add(constraintIndex);
             }
 
             CheckUseExports(exportTypes, _importIndex, _exportIndex, _entrypoints);
@@ -146,21 +151,22 @@ namespace TypedWorkflow.Common
             if (_contextmeta.IsEmpty)
             {
                 var scopedInstances = _scopedInstances.Where(e => e.Item2 != null).Select(e => (e.Item1, e.Item2.ToArray()));
-                _contextmeta = new TwContextMeta(_entrypoints.ToArray(), _instances.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx, _exportOptionNoneFactories.ToArray(), _exportOptionSomeFactories.ToArray());
+                _contextmeta = new TwContextMeta(_entrypoints.ToArray(), _instances.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _constraintIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx, _exportOptionNoneFactories.ToArray(), _exportOptionSomeFactories.ToArray());
             }
 
             return new TwContext(_contextmeta);
         }
 
-        private void ResolveDependencyRecurse(int idx, Stack<int> parent, List<Type> types)
+        private void ResolveDependencyRecurse(int idx, Stack<int> parent, List<Type> exported_types)
         {
             parent.Push(idx);
 
-            foreach (var dep in _importIndex[idx])
+            var dependencies = _importIndex[idx].Concat(_constraintIndex[idx].Select(e => e.Index));
+            foreach (var dep in dependencies)
             {
                 var depIdx = _exportIndex.FindIndex(e => e.Contains(dep));
                 if (depIdx < 0)
-                    throw new InvalidOperationException($"This type '{ types[dep] }' is not exported in any component");
+                    throw new InvalidOperationException($"This type '{ exported_types[dep] }' is not exported in any component");
 
                 if (_executeList.Contains(depIdx))
                     continue;
@@ -168,7 +174,7 @@ namespace TypedWorkflow.Common
                 if (parent.Contains(depIdx))
                     throw new InvalidOperationException($"Circular dependency detected, for {string.Join("->", parent.Select(i => _entrypoints[i].ToString()))}");
 
-                ResolveDependencyRecurse(depIdx, parent, types);
+                ResolveDependencyRecurse(depIdx, parent, exported_types);
             }
 
             _executeList.Add(idx);
@@ -227,6 +233,21 @@ namespace TypedWorkflow.Common
                     throw new IndexOutOfRangeException($"Import type '{component_type}({import[i]})' is not defined as exported");
 
                 index[i] = idx;
+            }
+
+            return index;
+        }
+
+        private static TwConstraintIndex[] GetConstraintIndex(List<Type> exportTypes, TwConstraint[] constraints, Type component_type)
+        {
+            var index = new TwConstraintIndex[constraints.Length];
+            for (var i = 0; i < index.Length; i++)
+            {
+                var idx = exportTypes.FindIndex(t => t == constraints[i].Constraint);
+                if (idx < 0)
+                    throw new IndexOutOfRangeException($"Constraint type '{component_type}({constraints[i].Constraint})' is not defined as exported");
+
+                index[i] = new TwConstraintIndex(idx, constraints[i].HasNone);
             }
 
             return index;

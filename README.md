@@ -144,6 +144,24 @@ public class SimpleComponent
 }
 ```
 
+## Execution constraints
+They are implemented as the `TwConstraintAttribute` attribute and are intended to block the execution of a handler method based on the presence or absence of a given model value.
+Using such restrictions, it is possible to implement the operation of the cache, this is when the presence of a value in the cache blocks the execution of an operation to obtain this value from its slower storage (for example, a database).
+A constraint condition can be assigned both to the base or main class of the component, and to the handler method itself.
+The result of a blocked handler method will have an empty value, so all handler methods dependent on this value will be skipped and their results will also have an empty value.
+```C#
+[TwConstraint(typeof(FromCache), HasNone = true)]
+public class ConstrainedComponent
+{
+    [TwEntrypoint]
+    public Option<FromDb> GetModelFromDb()
+    {
+        return Option.Create(new FromDb(new SomeModel()));
+    }
+}
+```
+A more detailed example can be found in the tests `TypedWorkflowTests.Components.11-ConstrainedComponent.cs`
+
 ## Performance issues
 * Return instances of classes, not structures (the mechanism of boxing and unboxing in cases of calling handler methods through the use of reflection nullifies all the advantages of structures).
 * If possible, use `singlеton` components (for this you need to mark a class with handler methods with a special attribute` TwSingletonAttribute`).

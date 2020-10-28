@@ -19,6 +19,8 @@ namespace TypedWorkflow.Common
 
         public bool IsAsync => false;
 
+        public TwConstraint[] Constraints => Array.Empty<TwConstraint>();
+
         public InitialEntrypoint(Type[] exports)
         {
             var (export, exportIsOptions) = ExpressionFactory.GetExpandedTypes(exports);
@@ -54,6 +56,8 @@ namespace TypedWorkflow.Common
         public TwEntrypointPriorityEnum Priority => (TwEntrypointPriorityEnum)(int.MaxValue);
 
         public bool IsAsync => false;
+
+        public TwConstraint[] Constraints => Array.Empty<TwConstraint>();
 
         public ResultEntrypoint(Type[] imports)
         {
