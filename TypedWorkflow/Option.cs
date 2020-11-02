@@ -7,6 +7,7 @@ namespace TypedWorkflow
 {
     public abstract class Option
     {
+        public struct Void { }
         public bool HasValue { get; private set; }
         public object Value { get; private set; }
 

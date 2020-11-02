@@ -29,39 +29,7 @@ namespace TypedWorkflow.Common
             Array.Copy(meta.Instances, _instances, _instances.Length);
         }
 
-        public async ValueTask Run(Action<bool, TwContext> complete, params object[] initial_imports)
-        {
-            try
-            {
-                var res = Run(initial_imports);
-                if (!res.IsCompletedSuccessfully)
-                    await res;
-            }
-            catch
-            {
-                complete(false, this);
-                throw;
-            }
-            complete(true, this);
-        }
-
-        public async ValueTask<Tr> Run<Tr>(Func<bool, TwContext, object[], Tr> complete, params object[] initial_imports)
-        {
-            try
-            {
-                var res = Run(initial_imports);
-                if (!res.IsCompletedSuccessfully)
-                    await res;
-            }
-            catch
-            {
-                complete(false, this, null);
-                throw;
-            }
-            return complete(true, this, (object[])_inputArgs[_meta.ResultEntrypointIdx].Clone());
-        }
-
-        private async ValueTask Run(object[] initial_imports)
+        public async ValueTask<object[]> RunAsync(object[] initial_imports)
         {
             try
             {
@@ -81,7 +49,7 @@ namespace TypedWorkflow.Common
                     }
 
                     if (entry.IsAsync)
-                        await entry.ExecuteAsync(instance, input, _output);
+                        await entry.ExecuteAsync(instance, input, _output).ConfigureAwait(false);
                     else
                         entry.Execute(instance, input, _output);
 
@@ -91,13 +59,18 @@ namespace TypedWorkflow.Common
             finally
             {
                 DisposeScopedInstances();
+                Array.Clear(_exportOptionInstances, 0, _exportOptionInstances.Length);
             }
+            
+            var res = _meta.ResultEntrypointIdx == -1 ? Array.Empty<object>() : (object[])_inputArgs[_meta.ResultEntrypointIdx].Clone();
+
+            return res;
         }
 
         private bool CheckConstraints(int entrypoint_idx)
         {
             var constraints = _meta.ConstraintIndex[entrypoint_idx];
-            
+
             for (var i = 0; i < constraints.Length; i++)
             {
                 var isNone = _exportInstanceIsNone[constraints[i].Index];
@@ -120,7 +93,9 @@ namespace TypedWorkflow.Common
                     var opt = _exportOptionInstances[idx];
                     if (opt == null)
                     {
-                        opt = (Option)(_exportInstanceIsNone[idx] ? _meta.ExportOptionNoneFactories[idx]() : _meta.ExportOptionNoneFactories[idx](d));
+                        opt = (Option)(_exportInstanceIsNone[idx] ? 
+                            _meta.ExportOptionNoneFactories[idx]() : 
+                            _meta.ExportOptionSomeFactories[idx](d));
                         _exportOptionInstances[idx] = opt;
                     }
                     d = opt;

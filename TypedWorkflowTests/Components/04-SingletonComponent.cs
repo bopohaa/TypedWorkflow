@@ -23,8 +23,7 @@ namespace TypedWorkflowTests.Components
         [TwEntrypoint]
         public void RunPerIteration()
         {
-            lock (this)
-                _iterationCount = ++_iterationCountInst;
+            Interlocked.Increment(ref _iterationCount); 
         }
 
         public static bool Assert(int iteration_cnt)

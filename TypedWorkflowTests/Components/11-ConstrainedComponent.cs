@@ -6,22 +6,23 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.Components
 {
-    [TwConstraint(typeof(ConsumerComponent.FromCache), HasNone = true)]
+    [TwSingleton, TwConstraint(typeof(ConsumerComponent.FromCache), HasNone = true)]
     public class ConstrainedComponent
     {
         private static long _runCnt;
 
         [TwEntrypoint]
-        public Option<ConsumerComponent.FromDb> GetModelFromDb()
+        public ConsumerComponent.FromDb GetModelFromDb()
         {
             Interlocked.Increment(ref _runCnt);
-            return Option.Create(new ConsumerComponent.FromDb(new ConsumerComponent.SomeModel()));
+            return new ConsumerComponent.FromDb(new ConsumerComponent.SomeModel());
         }
 
         public static bool Assert(int iteration_cnt)
             => iteration_cnt / 10 == _runCnt;
     }
 
+    [TwSingleton]
     public class ConstraintComponent
     {
         private static long _runCnt;
@@ -36,6 +37,7 @@ namespace TypedWorkflowTests.Components
             => iteration_cnt == _runCnt;
     }
 
+    [TwSingleton]
     public class ConsumerComponent
     {
         private static long _fromDb;

@@ -51,11 +51,7 @@ namespace TypedWorkflow
 
         public ITwContainer<T> Build<T>()
         {
-            var import = typeof(T);
-            var isTupeImport = import.IsGenericType ? _valueTupleTypes.Contains(import.GetGenericTypeDefinition()) : false;
-            var importTupleFields = isTupeImport ? import.GetFields() : null;
-            var importTypes = isTupeImport ? import.GenericTypeArguments : new[] { import };
-
+            var importTypes  = GetImports<T>(out var importTupleFields);
             var factory = CreateContextFactory(importTypes);
 
             return new TwContainer<T>(factory, importTupleFields);
@@ -63,11 +59,7 @@ namespace TypedWorkflow
 
         public ITwContainer<T, Tr> Build<T, Tr>()
         {
-            var import = typeof(T);
-            var isTupeImport = import.IsGenericType ? _valueTupleTypes.Contains(import.GetGenericTypeDefinition()) : false;
-            var importTupleFields = isTupeImport ? import.GetFields() : null;
-            var importTypes = isTupeImport ? import.GenericTypeArguments : new[] { import };
-
+            var importTypes = GetImports<T>(out var importTupleFields);
             var export = typeof(Tr);
             var isTupleExport = export.IsGenericType ? _valueTupleTypes.Contains(export.GetGenericTypeDefinition()) : false;
             var exportTypes = isTupleExport ? export.GenericTypeArguments : new[] { export };
@@ -75,6 +67,18 @@ namespace TypedWorkflow
             var factory = CreateContextFactory(importTypes, exportTypes);
 
             return new TwContainer<T, Tr>(factory, importTupleFields, isTupleExport ? exportTypes : null);
+        }
+
+        public ITwContainer<Option.Void, Tr> BuildWithResult<Tr>() => Build<Option.Void, Tr>();
+
+        private static Type[] GetImports<T>(out FieldInfo[] importTupleFields)
+        {
+            var import = typeof(T);
+            var isVoidImport = import == typeof(Option.Void);
+            var isTupeImport = import.IsGenericType ? _valueTupleTypes.Contains(import.GetGenericTypeDefinition()) : false;
+            importTupleFields = isTupeImport ? import.GetFields() : null;
+            var importTypes = isVoidImport ? null : isTupeImport ? import.GenericTypeArguments : new[] { import };
+            return importTypes;
         }
 
         private ObjectPool<TwContext> CreateContextFactory(Type[] initial_imports = null, Type[] result_exports = null)

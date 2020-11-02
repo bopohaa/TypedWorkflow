@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace TypedWorkflow.Common
@@ -7,7 +8,7 @@ namespace TypedWorkflow.Common
     internal class TwContainer : ITwContainer
     {
         private readonly ObjectPool<TwContext> _factory;
-        private readonly Action<bool, TwContext> _complete;
+        private readonly Func<Task<object[]>, object, object[]> _complete;
 
         public TwContainer(ObjectPool<TwContext> factory)
         {
@@ -17,72 +18,72 @@ namespace TypedWorkflow.Common
 
         public ValueTask Run()
         {
-            var context = AllocateContext();
-            return context.Run(_complete);
+            var res = Run(Array.Empty<object>());
+            return res.IsCompleted ? new ValueTask() : new ValueTask(res.AsTask());
         }
 
-        protected TwContext AllocateContext()
+        protected ValueTask<object[]> Run(object[] initial_imports)
         {
-            return _factory.Allocate();
+            var context = _factory.Allocate();
+            var res = context.RunAsync(initial_imports);
+            if (res.IsCompleted)
+            {
+                _complete(null, context);
+                return res;
+            }
+            return new ValueTask<object[]>(res.AsTask().ContinueWith(_complete, context));
         }
 
-        protected void FreeContext(TwContext context)
+        private object[] Complete(Task<object[]> complete, object state)
         {
+            var context = (TwContext)state;
             _factory.Free(context);
-        }
-
-        private void Complete(bool complete, TwContext context)
-        {
-            FreeContext(context);
+            return complete?.Result;
         }
 
     }
 
     internal class TwContainer<T> : TwContainer, ITwContainer<T>
     {
-        private readonly object[] _initialImports;
-        private readonly FieldInfo[] _initialTupleFields;
-        private readonly Action<bool, TwContext> _complete;
+        private readonly Func<T, object[]> _getInitialImports;
+        protected Func<T, object[]> GetInitialImports => _getInitialImports;
 
         public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields) : base(factory)
         {
-            _initialTupleFields = initial_tuple_fields;
-            _complete = Complete;
-
-            _initialImports = new object[_initialTupleFields?.Length ?? 1];
+            if (typeof(T) == typeof(Option.Void))
+                _getInitialImports = e => Array.Empty<object>();
+            else if (initial_tuple_fields == null)
+                _getInitialImports = GetInitialImportsImpl;
+            else
+                _getInitialImports = v => GetInitialImportsImpl(v, initial_tuple_fields);
         }
 
         public ValueTask Run(T initial_imports)
         {
-            var context = AllocateContext();
-            return context.Run(_complete, SetInitialImports(initial_imports));
+            var res = Run(GetInitialImports(initial_imports));
+            return res.IsCompleted ? new ValueTask() : new ValueTask(res.AsTask());
         }
 
-        protected object[] SetInitialImports(T initial_imports)
-        {
-            if (_initialTupleFields != null)
-                for (int i = 0; i < _initialTupleFields.Length; ++i)
-                    _initialImports[i] = _initialTupleFields[i].GetValue(initial_imports);
-            else
-                _initialImports[0] = initial_imports;
+        private object[] GetInitialImportsImpl(T initial_imports)
+            => new[] { (object)initial_imports };
 
-            return _initialImports;
-        }
-
-        private void Complete(bool complete, TwContext context)
+        private object[] GetInitialImportsImpl(T initial_imports, FieldInfo[] initial_tuple_fields)
         {
-            FreeContext(context);
+            var initialImports = new object[initial_tuple_fields.Length];
+            for (int i = 0; i < initial_tuple_fields.Length; ++i)
+                initialImports[i] = initial_tuple_fields[i].GetValue(initial_imports);
+            return initialImports;
         }
     }
 
     internal class TwContainer<T, Tr> : TwContainer<T>, ITwContainer<T, Tr>
     {
         private readonly ConstructorInfo _resultTupleConstructor;
-        private readonly Func<bool, TwContext, object[], Tr> _complete;
+        private readonly Func<Task<object[]>, Tr> _success;
 
         public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types) : base(factory, initial_tuple_fields)
         {
-            _complete = Complete;
+            _success = t => GetResult(t.Result);
 
             if (result_tuple_types != null)
             {
@@ -93,17 +94,15 @@ namespace TypedWorkflow.Common
 
         public new ValueTask<Tr> Run(T initial_imports)
         {
-            var context = AllocateContext();
-            return context.Run(_complete, SetInitialImports(initial_imports));
+            var res = Run(GetInitialImports(initial_imports));
+            if (res.IsCompleted)
+                return new ValueTask<Tr>(GetResult(res.Result));
+            var t = res.AsTask().ContinueWith(_success, TaskContinuationOptions.OnlyOnRanToCompletion);
+            return new ValueTask<Tr>(t);
         }
 
-        private Tr Complete(bool complete, TwContext context, object[] result)
+        private Tr GetResult(object[] result)
         {
-            FreeContext(context);
-
-            if (!complete)
-                return default(Tr);
-
             if (_resultTupleConstructor != null)
                 return (Tr)_resultTupleConstructor.Invoke(result);
 

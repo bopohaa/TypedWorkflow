@@ -6,6 +6,7 @@ using TypedWorkflowTests.Common;
 
 namespace TypedWorkflowTests.Components
 {
+    [TwSingleton]
     public class DiCiComponent
     {
         private const string LINE = "#DiCiComponent.AppendText#";

@@ -6,7 +6,7 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.Common
 {
-    class Resolver : IResolver
+    public class Resolver : IResolver
     {
         public IStringBuilder Sb { get; private set; } = new StringBuilderService();
 

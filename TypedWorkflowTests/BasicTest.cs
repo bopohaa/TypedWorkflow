@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using System.Linq;
 using System.Threading.Tasks;
 using TypedWorkflow;
 using TypedWorkflowTests.Common;
@@ -7,14 +8,14 @@ using TypedWorkflowTests.Components.Composite;
 
 namespace TypedWorkflowTests
 {
-    public class WorkflowBuilderTest
+    public class BasicTest
     {
         private const int ITERATION_CNT = 100;
 
         private int _resolveCnt;
         private string _serviceResult;
 
-        public WorkflowBuilderTest()
+        public BasicTest()
         {
             var resolver = new Resolver();
             var builder = new TwContainerBuilder();
@@ -24,10 +25,12 @@ namespace TypedWorkflowTests
                 .RegisterExternalDi(resolver)
                 .Build();
 
-            var tasks = new Task[ITERATION_CNT];
-            for (var i = 0; i < ITERATION_CNT; i++)
-                tasks[i] = Task.Run(async () => await container.Run());
+            var tasks = Enumerable.Range(0, ITERATION_CNT).Select(i => Task.Run(() => container.Run().AsTask())).ToArray();
+            //var tasks = Enumerable.Range(0, ITERATION_CNT).Select(i => Task.Run(() => DecompositionRunner.Run(resolver).AsTask())).ToArray();
             Task.WaitAll(tasks);
+            //foreach (var i in Enumerable.Range(0, ITERATION_CNT))
+            //    container.Run().AsTask().Wait();
+
 
             _resolveCnt = resolver.ResolveCount;
             _serviceResult = resolver.Sb.ToString();

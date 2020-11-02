@@ -15,6 +15,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TypedWorkflowTests", "TypedWorkflowTests\TypedWorkflowTests.csproj", "{724F32E1-0EB7-4810-B174-F962D135F28C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TypedWorkflowBenchmark", "TypedWorkflowBenchmark\TypedWorkflowBenchmark.csproj", "{E3157FD0-762C-48EC-92D9-FD0FBF6B0E83}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -29,6 +31,10 @@ Global
 		{724F32E1-0EB7-4810-B174-F962D135F28C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{724F32E1-0EB7-4810-B174-F962D135F28C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{724F32E1-0EB7-4810-B174-F962D135F28C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E3157FD0-762C-48EC-92D9-FD0FBF6B0E83}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3157FD0-762C-48EC-92D9-FD0FBF6B0E83}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3157FD0-762C-48EC-92D9-FD0FBF6B0E83}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E3157FD0-762C-48EC-92D9-FD0FBF6B0E83}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

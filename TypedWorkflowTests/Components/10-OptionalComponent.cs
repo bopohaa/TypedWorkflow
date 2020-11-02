@@ -6,6 +6,7 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.Components
 {
+    [TwSingleton]
     public class OptionalComponent
     {
         private static int _neverRunCount = 0;

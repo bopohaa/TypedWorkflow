@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
 using TypedWorkflow;
 
@@ -21,13 +18,16 @@ namespace TypedWorkflowTests.Components
         public struct Result3 { public int Data; }
 
         [TwEntrypoint]
-        public Task<Result1> Run1()
-            => Task.Delay(10).ContinueWith(t => new Result1 { Data = DATA1 });
+        public async Task<Result1> Run1()
+        {
+            await Task.Yield();
+            return new Result1 { Data = DATA1 };
+        }
 
         [TwEntrypoint]
         public async Task<(Result2, Result3)> Run2()
         {
-            await Task.Delay(10);
+            await Task.Yield();
             return (new Result2 { Data = DATA2 }, new Result3 { Data = DATA3 });
         }
 
