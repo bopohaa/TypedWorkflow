@@ -1,7 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Threading;
+
 using TypedWorkflow;
 
 namespace TypedWorkflowTests.Common
@@ -13,6 +12,21 @@ namespace TypedWorkflowTests.Common
         private int _resolveCount = 0;
         public int ResolveCount => _resolveCount;
 
+        private int _createScopeCnt = 0;
+        public int CreateScopeCnt => _createScopeCnt;
+
+        private class ResolverScope : IScopedResolver
+        {
+            private readonly ISimpleResolver _resolver;
+
+            public ResolverScope(ISimpleResolver resolver) => _resolver = resolver;
+
+            public void Dispose() { }
+
+            public object Resolve(Type type) => _resolver.Resolve(type);
+        }
+
+
         public object Resolve(Type type)
         {
             Interlocked.Increment(ref _resolveCount);
@@ -21,6 +35,12 @@ namespace TypedWorkflowTests.Common
                 return Sb;
 
             throw new NotSupportedException();
+        }
+
+        public IScopedResolver CreateScope()
+        {
+            Interlocked.Increment(ref _createScopeCnt);
+            return new ResolverScope(this);
         }
     }
 }

@@ -13,27 +13,30 @@ namespace TypedWorkflow.Common
         private readonly ExpressionFactory.Activator _activator;
         private readonly Deactivator _deactivator;
         private readonly bool _resolvePerInstance;
-        private readonly IResolver _resolver;
         private readonly Type[] _constructorArgTypes;
         private readonly object[] _constructorArgs;
+        private bool _canResolve;
 
-        public TwComponentFactory(ConstructorInfo constructor, IResolver resolver)
+        public TwComponentFactory(ConstructorInfo constructor)
         {
             var constructorAttr = constructor.GetCustomAttribute<TwConstructorAttribute>();
 
-            _resolver = resolver;
             _resolvePerInstance = constructorAttr?.ResolvePerInstance ?? false;
             (_activator, _constructorArgTypes) = GetActivator(constructor);
             _deactivator = GetDeactivator(constructor.DeclaringType);
             _constructorArgs = new object[_constructorArgTypes.Length];
-            if (!_resolvePerInstance)
-                ResolveConstructorArgs();
+            _canResolve = true;
         }
 
-        public object CreateInstance()
+        public object CreateInstance(ISimpleResolver resolver)
         {
-            if (_resolvePerInstance)
-                ResolveConstructorArgs();
+            if (_canResolve)
+            {
+                for (var i = 0; i < _constructorArgTypes.Length; ++i)
+                    _constructorArgs[i] = resolver.Resolve(_constructorArgTypes[i]);
+
+                _canResolve = _resolvePerInstance;
+            }
             return _activator(_constructorArgs);
         }
 
@@ -41,14 +44,6 @@ namespace TypedWorkflow.Common
         {
             if (_deactivator != null && instance != null)
                 _deactivator(instance);
-        }
-
-        private void ResolveConstructorArgs()
-        {
-            for (var i = 0; i < _constructorArgTypes.Length; ++i)
-            {
-                _constructorArgs[i] = _resolver.Resolve(_constructorArgTypes[i]);
-            }
         }
     }
 }

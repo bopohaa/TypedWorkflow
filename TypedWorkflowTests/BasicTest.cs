@@ -13,6 +13,7 @@ namespace TypedWorkflowTests
         private const int ITERATION_CNT = 100;
 
         private int _resolveCnt;
+        private int _createScopeResolverCnt;
         private string _serviceResult;
 
         public BasicTest()
@@ -33,6 +34,7 @@ namespace TypedWorkflowTests
 
 
             _resolveCnt = resolver.ResolveCount;
+            _createScopeResolverCnt = resolver.CreateScopeCnt;
             _serviceResult = resolver.Sb.ToString();
         }
 
@@ -42,8 +44,11 @@ namespace TypedWorkflowTests
         }
 
         [Test]
-        public void ResolveTest() =>
+        public void ResolveTest()
+        {
             Assert.AreEqual(1 + ITERATION_CNT, _resolveCnt);
+            Assert.AreEqual(ITERATION_CNT, _createScopeResolverCnt);
+        }
 
         [Test]
         public void SingleComponentTest() =>

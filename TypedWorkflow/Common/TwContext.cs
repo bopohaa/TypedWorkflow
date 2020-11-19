@@ -14,10 +14,12 @@ namespace TypedWorkflow.Common
         private readonly object[][] _inputArgs;
         private readonly object[] _output;
         private object[] _instances;
+        private readonly IResolver _resolver;
 
-        public TwContext(TwContextMeta meta)
+        public TwContext(TwContextMeta meta, IResolver resolver)
         {
             _meta = meta;
+            _resolver = resolver;
             _exportInstances = new object[_meta.ExportCnt];
             _exportInstanceIsNone = new bool[_meta.ExportCnt];
             _exportOptionInstances = new Option[_meta.ExportCnt];
@@ -31,9 +33,10 @@ namespace TypedWorkflow.Common
 
         public async ValueTask<object[]> RunAsync(object[] initial_imports)
         {
+            IDisposable scope = null;
             try
             {
-                CreateScopedInstances();
+                scope = CreateScopedInstances();
                 foreach (var idx in _meta.ExecuteList)
                 {
                     var entry = _meta.Entrypoints[idx];
@@ -58,10 +61,14 @@ namespace TypedWorkflow.Common
             }
             finally
             {
-                DisposeScopedInstances();
-                Array.Clear(_exportOptionInstances, 0, _exportOptionInstances.Length);
+                try { DisposeScopedInstances(); }
+                finally
+                {
+                    Array.Clear(_exportOptionInstances, 0, _exportOptionInstances.Length);
+                    scope?.Dispose();
+                }
             }
-            
+
             var res = _meta.ResultEntrypointIdx == -1 ? Array.Empty<object>() : (object[])_inputArgs[_meta.ResultEntrypointIdx].Clone();
 
             return res;
@@ -93,8 +100,8 @@ namespace TypedWorkflow.Common
                     var opt = _exportOptionInstances[idx];
                     if (opt == null)
                     {
-                        opt = (Option)(_exportInstanceIsNone[idx] ? 
-                            _meta.ExportOptionNoneFactories[idx]() : 
+                        opt = (Option)(_exportInstanceIsNone[idx] ?
+                            _meta.ExportOptionNoneFactories[idx]() :
                             _meta.ExportOptionSomeFactories[idx](d));
                         _exportOptionInstances[idx] = opt;
                     }
@@ -138,13 +145,24 @@ namespace TypedWorkflow.Common
             }
         }
 
-        private void CreateScopedInstances()
+        private IDisposable CreateScopedInstances()
         {
-            foreach (var e in _meta.ScopedInstances)
+            var scope = _resolver?.CreateScope();
+            try
             {
-                var instance = e.Item1.CreateInstance();
-                foreach (var idx in e.Item2)
-                    _instances[idx] = instance;
+                var resolver = (ISimpleResolver)scope ?? _resolver;
+                foreach (var e in _meta.ScopedInstances)
+                {
+                    var instance = e.Item1.CreateInstance(resolver);
+                    foreach (var idx in e.Item2)
+                        _instances[idx] = instance;
+                }
+                return scope;
+            }
+            catch
+            {
+                scope?.Dispose();
+                throw;
             }
         }
         private void DisposeScopedInstances()

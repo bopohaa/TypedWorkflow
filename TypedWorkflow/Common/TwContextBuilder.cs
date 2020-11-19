@@ -22,6 +22,7 @@ namespace TypedWorkflow.Common
         private TwContextMeta _contextmeta;
         private int _initialEntrypointIdx = -1;
         private int _resultEtrypointIdx = -1;
+        private IResolver _resolver;
 
         public TwContextBuilder()
         {
@@ -79,6 +80,8 @@ namespace TypedWorkflow.Common
             if (_instances.Count > 0)
                 throw new InvalidOperationException("Already created");
 
+            _resolver = resolver;
+
             var exportTypes = new List<Type>();
             var instanceIdxs = new Dictionary<Type, int>();
             var instances = new List<object>();
@@ -100,9 +103,9 @@ namespace TypedWorkflow.Common
                     {
                         var isSingleton = entryPoint.InstanceType.GetCustomAttribute<TwSingletonAttribute>() != null;
                         var constructor = entryPoint.InstanceType.GetConstructors(BindingFlags.Public | BindingFlags.Instance).OrderBy(c => c.GetCustomAttribute<TwConstructorAttribute>() != null ? 0 : 1).First();
-                        var factory = new TwComponentFactory(constructor, resolver);
+                        var factory = new TwComponentFactory(constructor);
                         _scopedInstances.Add((factory, isSingleton ? null : new List<int>(new[] { i })));
-                        instance = isSingleton ? factory.CreateInstance() : null;
+                        instance = isSingleton ? factory.CreateInstance(_resolver) : null;
                         instanceIdxs.Add(entryPoint.InstanceType, instances.Count);
                         instances.Add(instance);
                     }
@@ -154,7 +157,7 @@ namespace TypedWorkflow.Common
                 _contextmeta = new TwContextMeta(_entrypoints.ToArray(), _instances.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _constraintIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx, _exportOptionNoneFactories.ToArray(), _exportOptionSomeFactories.ToArray());
             }
 
-            return new TwContext(_contextmeta);
+            return new TwContext(_contextmeta, _resolver);
         }
 
         private void ResolveDependencyRecurse(int idx, Stack<int> parent, List<Type> exported_types)
