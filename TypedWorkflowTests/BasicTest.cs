@@ -1,7 +1,10 @@
 using NUnit.Framework;
+
 using System.Linq;
 using System.Threading.Tasks;
+
 using TypedWorkflow;
+
 using TypedWorkflowTests.Common;
 using TypedWorkflowTests.Components;
 using TypedWorkflowTests.Components.Composite;
@@ -29,9 +32,6 @@ namespace TypedWorkflowTests
             var tasks = Enumerable.Range(0, ITERATION_CNT).Select(i => Task.Run(() => container.Run().AsTask())).ToArray();
             //var tasks = Enumerable.Range(0, ITERATION_CNT).Select(i => Task.Run(() => DecompositionRunner.Run(resolver).AsTask())).ToArray();
             Task.WaitAll(tasks);
-            //foreach (var i in Enumerable.Range(0, ITERATION_CNT))
-            //    container.Run().AsTask().Wait();
-
 
             _resolveCnt = resolver.ResolveCount;
             _createScopeResolverCnt = resolver.CreateScopeCnt;
@@ -46,7 +46,8 @@ namespace TypedWorkflowTests
         [Test]
         public void ResolveTest()
         {
-            Assert.AreEqual(1 + ITERATION_CNT, _resolveCnt);
+            // SingletonComponent.Init + MixedSingletonComponent.Init + MixedSingletonComponent*ITERATION_CNT + DiCiComponent*ITERATION_CNT + CustomConstructorComponent*ITERATION_CNT
+            Assert.AreEqual(2 + ITERATION_CNT * 3, _resolveCnt);
             Assert.AreEqual(ITERATION_CNT, _createScopeResolverCnt);
         }
 

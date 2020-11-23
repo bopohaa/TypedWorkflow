@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+
 using TypedWorkflow.Common;
 
 namespace TypedWorkflow
@@ -51,7 +52,7 @@ namespace TypedWorkflow
 
         public ITwContainer<T> Build<T>()
         {
-            var importTypes  = GetImports<T>(out var importTupleFields);
+            var importTypes = GetImports<T>(out var importTupleFields);
             var factory = CreateContextFactory(importTypes);
 
             return new TwContainer<T>(factory, importTupleFields);
@@ -93,8 +94,8 @@ namespace TypedWorkflow
             else
                 nsComparer = t => namespaces.Any(ns => t.Namespace?.StartsWith(ns) ?? false);
             var entrypoints = _assemblies.SelectMany(a => a.GetTypes()
-                    .Where(t => t.IsClass && !t.IsAbstract && nsComparer(t))
-                    .SelectMany(c => c.FindMembers(MemberTypes.Method, BindingFlags.Public | BindingFlags.Instance, entrypointFilter, null))
+                    .Where(t => t.IsClass && (!t.IsAbstract || t.IsSealed) && nsComparer(t))
+                    .SelectMany(c => c.FindMembers(MemberTypes.Method, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static, entrypointFilter, null))
                     .Cast<MethodInfo>());
 
             foreach (var entrypoint in entrypoints)

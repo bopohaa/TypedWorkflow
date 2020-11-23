@@ -6,7 +6,6 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.Components
 {
-    [TwSingleton]
     public class MultiresultComponent
     {
         private const int DATA1 = 2;
@@ -30,7 +29,6 @@ namespace TypedWorkflowTests.Components
 
     }
 
-    [TwSingleton]
     public class PartialConsumer1Component
     {
         public struct Model { public int Data; }
@@ -40,7 +38,6 @@ namespace TypedWorkflowTests.Components
             => new Model { Data = dependency.Data };
     }
 
-    [TwSingleton]
     public class PartialConsumer2Component
     {
         public struct Model { public int Data; }

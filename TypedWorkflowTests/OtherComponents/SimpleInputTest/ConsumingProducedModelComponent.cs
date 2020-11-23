@@ -8,7 +8,6 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.OtherComponents.SimpleInputTest
 {
-    [TwSingleton]
     public class ConsumingProducedModelComponent
     {
         private static long _argSum;

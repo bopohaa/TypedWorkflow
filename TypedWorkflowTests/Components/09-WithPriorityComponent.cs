@@ -6,7 +6,6 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.Components
 {
-    [TwSingleton]
     public class WithPriorityComponent
     {
         private static int _result = 0;
@@ -21,7 +20,6 @@ namespace TypedWorkflowTests.Components
             => _resultInst.Value = 2;
 
 
-        [TwSingleton]
         public class WithPriorityComponent2
         {
             [TwEntrypoint(TwEntrypointPriorityEnum.Medium)]

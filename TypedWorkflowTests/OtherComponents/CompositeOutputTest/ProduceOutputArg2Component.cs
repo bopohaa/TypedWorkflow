@@ -7,7 +7,6 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.OtherComponents.CompositeOutputTest
 {
-    [TwSingleton]
     public class ProduceOutputArg2Component
     {
         private static int _runCnt;

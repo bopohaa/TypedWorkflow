@@ -74,7 +74,7 @@ This code will create a container for executing a sequence of handler methods an
 The container's `Run` method is thread-safe and can be used any number of times during the lifetime of the container.
 
 ## Dependency Injection (DI)
-Dependency injection is supported only in Constructor Injection classes that contain marked-up handler methods.
+Dependency injection is supported for constructors (Constructor Injection) and static methods of the `TwInject` tagged classes that contain the tagged handler methods.
 This can be done through the implementation of the `TypedWorkflow.IResolver` interface and passing an instance of such a class when creating a container.
 ```C#
 var resolver = new MyDiResolver();
@@ -83,6 +83,16 @@ var container = builder
     .AddAssemblies(typeof(SimpleComponent).Assembly)
     .RegisterExternalDi(resolver)
     .Build();
+```
+
+### Singleton components
+It is possible to create static handler methods
+```C#
+public static class SingletonComponent
+{
+    [TwEntrypoint]
+    public static void Run(int i, float f){}
+}
 ```
 
 ## Passing parameters from the external environment
@@ -164,7 +174,7 @@ A more detailed example can be found in the tests `TypedWorkflowTests.Components
 
 ## Performance issues
 * Return instances of classes, not structures (the mechanism of boxing and unboxing in cases of calling handler methods through the use of reflection nullifies all the advantages of structures).
-* If possible, use `singlеton` components (for this you need to mark a class with handler methods with a special attribute` TwSingletonAttribute`).
+* Use `singlеton` components whenever possible (using static methods as handler methods).
 
 ## Working use cases
 Can be found in the project `TypedWorkflowTests` in the class` WorkflowBuilderTest` (all components are located in the folder `Components` of the specified project)

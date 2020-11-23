@@ -13,8 +13,9 @@ namespace TypedWorkflow.Common
         private readonly bool[] _exportInstanceIsNone;
         private readonly object[][] _inputArgs;
         private readonly object[] _output;
-        private object[] _instances;
+        private object[] _entrypointInstances;
         private readonly IResolver _resolver;
+        private readonly object[][] _scopedActivatorBuffers;
 
         public TwContext(TwContextMeta meta, IResolver resolver)
         {
@@ -27,8 +28,11 @@ namespace TypedWorkflow.Common
             _output = new object[256];
             for (var i = 0; i < _meta.ImportIndex.Length; ++i)
                 _inputArgs[i] = new object[_meta.ImportIndex[i].Length];
-            _instances = new object[meta.Instances.Length];
-            Array.Copy(meta.Instances, _instances, _instances.Length);
+            _entrypointInstances = new object[meta.Entrypoints.Length];
+
+            _scopedActivatorBuffers = new object[_meta.ScopedInstances.Length][];
+            for (var i = 0; i < _scopedActivatorBuffers.Length; i++)
+                _scopedActivatorBuffers[i] = _meta.ScopedInstances[i].Item1.CreateActivateParamsBuffer();
         }
 
         public async ValueTask<object[]> RunAsync(object[] initial_imports)
@@ -40,7 +44,7 @@ namespace TypedWorkflow.Common
                 foreach (var idx in _meta.ExecuteList)
                 {
                     var entry = _meta.Entrypoints[idx];
-                    var instance = _instances[idx];
+                    var instance = _entrypointInstances[idx];
                     var outputArgs = _meta.ExportIndex[idx];
                     var inputArgs = _meta.ImportIndex[idx];
                     var input = _meta.InitialEntrypointIdx == idx ? initial_imports : _inputArgs[idx];
@@ -151,11 +155,13 @@ namespace TypedWorkflow.Common
             try
             {
                 var resolver = (ISimpleResolver)scope ?? _resolver;
-                foreach (var e in _meta.ScopedInstances)
+                for (var i = 0; i < _meta.ScopedInstances.Length; i++)
                 {
-                    var instance = e.Item1.CreateInstance(resolver);
+                    var e = _meta.ScopedInstances[i];
+                    var activateParamsBuffer = _scopedActivatorBuffers[i];
+                    var instance = e.Item1.CreateInstance(resolver, activateParamsBuffer);
                     foreach (var idx in e.Item2)
-                        _instances[idx] = instance;
+                        _entrypointInstances[idx] = instance;
                 }
                 return scope;
             }
@@ -170,9 +176,9 @@ namespace TypedWorkflow.Common
             List<Exception> error = null;
             foreach (var e in _meta.ScopedInstances)
             {
-                var instance = _instances[e.Item2[0]];
+                var instance = _entrypointInstances[e.Item2[0]];
                 foreach (var idx in e.Item2)
-                    _instances[idx] = null;
+                    _entrypointInstances[idx] = null;
                 try { e.Item1.TryDisposeInstance(instance); } catch (Exception ex) { if (error == null) { error = new List<Exception>(); error.Add(ex); } }
             }
             if (error != null)

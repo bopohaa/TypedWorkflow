@@ -8,7 +8,6 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.OtherComponents.CompositeInputTest
 {
-    [TwSingleton]
     public class ConsumingProducedModelComponent
     {
         private static long _model1Sum;

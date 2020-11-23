@@ -5,7 +5,6 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.OtherComponents.SimpleInputTest
 {
-    [TwSingleton]
     public class ConsumingInputArgComponent
     {
         public struct ProducedModel

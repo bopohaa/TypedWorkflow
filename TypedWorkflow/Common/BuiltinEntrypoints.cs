@@ -21,6 +21,8 @@ namespace TypedWorkflow.Common
 
         public TwConstraint[] Constraints => Array.Empty<TwConstraint>();
 
+        public bool IsSingleton => true;
+
         public InitialEntrypoint(Type[] exports)
         {
             var (export, exportIsOptions) = ExpressionFactory.GetExpandedTypes(exports);
@@ -58,6 +60,8 @@ namespace TypedWorkflow.Common
         public bool IsAsync => false;
 
         public TwConstraint[] Constraints => Array.Empty<TwConstraint>();
+
+        public bool IsSingleton => true;
 
         public ResultEntrypoint(Type[] imports)
         {

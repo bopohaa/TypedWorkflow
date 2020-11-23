@@ -1,16 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using TypedWorkflow;
+﻿using TypedWorkflow;
+
 using TypedWorkflowTests.Common;
 
 namespace TypedWorkflowTests.Components
 {
-    [TwSingleton]
     public class DiCiComponent
     {
         private const string LINE = "#DiCiComponent.AppendText#";
-        private readonly IStringBuilder _sb;
+        private IStringBuilder _sb;
 
         public DiCiComponent(IStringBuilder di_sb_service)
         {

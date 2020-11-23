@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
 using System.Reflection;
-using System.Text;
+
 using static TypedWorkflow.Common.ExpressionFactory;
 
 namespace TypedWorkflow.Common
@@ -12,38 +10,51 @@ namespace TypedWorkflow.Common
     {
         private readonly ExpressionFactory.Activator _activator;
         private readonly Deactivator _deactivator;
-        private readonly bool _resolvePerInstance;
         private readonly Type[] _constructorArgTypes;
-        private readonly object[] _constructorArgs;
-        private bool _canResolve;
 
-        public TwComponentFactory(ConstructorInfo constructor)
+        public TwComponentFactory(IEnumerable<MethodInfo> initialization, ConstructorInfo constructor, IResolver resolver)
         {
-            var constructorAttr = constructor.GetCustomAttribute<TwConstructorAttribute>();
+            foreach (var init in initialization)
+                Initialization(init, resolver);
 
-            _resolvePerInstance = constructorAttr?.ResolvePerInstance ?? false;
+            if (constructor is null)
+                return;
+
             (_activator, _constructorArgTypes) = GetActivator(constructor);
             _deactivator = GetDeactivator(constructor.DeclaringType);
-            _constructorArgs = new object[_constructorArgTypes.Length];
-            _canResolve = true;
+
         }
 
-        public object CreateInstance(ISimpleResolver resolver)
+        public object CreateInstance(ISimpleResolver resolver, object[] activate_params_buffer = null)
         {
-            if (_canResolve)
-            {
-                for (var i = 0; i < _constructorArgTypes.Length; ++i)
-                    _constructorArgs[i] = resolver.Resolve(_constructorArgTypes[i]);
+            if (_activator is null)
+                return null;
 
-                _canResolve = _resolvePerInstance;
-            }
-            return _activator(_constructorArgs);
+            var args = activate_params_buffer ?? CreateActivateParamsBuffer();
+            ResolveArgs(_constructorArgTypes, resolver, args);
+            return _activator(args);
         }
 
         public void TryDisposeInstance(object instance)
         {
             if (_deactivator != null && instance != null)
                 _deactivator(instance);
+        }
+
+        public object[] CreateActivateParamsBuffer() => new object[_constructorArgTypes.Length];
+
+        private static void Initialization(MethodInfo initialization, IResolver resolver)
+        {
+            var (init, argTypes) = GetInitializer(initialization);
+            var args = new object[argTypes.Length];
+            ResolveArgs(argTypes, resolver, args);
+            init(args);
+        }
+
+        private static void ResolveArgs(Type[] arg_types, ISimpleResolver resolver, object[] result)
+        {
+            for (var i = 0; i < result.Length; ++i)
+                result[i] = resolver.Resolve(arg_types[i]);
         }
     }
 }

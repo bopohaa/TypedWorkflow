@@ -9,7 +9,6 @@ namespace TypedWorkflowTests.Components
 {
     public static class DecompositionRunner
     {
-        private static SingletonComponent _singletonComponent = new SingletonComponent();
         private static MultiresultComponent _multiresultComponent = new MultiresultComponent();
         private static PartialConsumer1Component _partialConsumer1Component = new PartialConsumer1Component();
         private static PartialConsumer2Component _partialConsumer2Component = new PartialConsumer2Component();
@@ -46,7 +45,7 @@ namespace TypedWorkflowTests.Components
             compositeComponent.SomeRun();
             compositeComponent.OtherRun();
 
-            _singletonComponent.RunPerIteration();
+            SingletonComponent.RunPerIteration();
 
             disposableComponent.Run();
 

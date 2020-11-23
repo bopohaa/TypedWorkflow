@@ -4,8 +4,8 @@ using System.Text;
 
 namespace TypedWorkflow
 {
-    [AttributeUsage(AttributeTargets.Class)]
-    public class TwSingletonAttribute : Attribute
+    [AttributeUsage(AttributeTargets.Method)]
+    public class TwInjectAttribute : Attribute
     {
     }
 }

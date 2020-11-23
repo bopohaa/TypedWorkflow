@@ -16,7 +16,7 @@ namespace TypedWorkflowTests.Components
             _sb = new StringBuilderService();
         }
 
-        [TwConstructor(resolve_per_instance: true)]
+        [TwConstructor]
         public CustomConstructorComponent(IStringBuilder sb)
         {
             _sb = sb;

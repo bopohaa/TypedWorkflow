@@ -9,7 +9,6 @@ namespace TypedWorkflow.Common
     internal class TwContextBuilder
     {
         private readonly List<IEntrypoint> _entrypoints;
-        private readonly List<object> _instances;
         private readonly List<(TwComponentFactory, List<int>)> _scopedInstances;
         private readonly List<int[]> _exportIndex;
         private readonly List<int[]> _importIndex;
@@ -18,6 +17,7 @@ namespace TypedWorkflow.Common
         private readonly List<ExpressionFactory.Activator> _exportOptionNoneFactories;
         private readonly List<ExpressionFactory.Activator> _exportOptionSomeFactories;
 
+        private int _componentsCount = 0;
         private int _exportCnt;
         private TwContextMeta _contextmeta;
         private int _initialEntrypointIdx = -1;
@@ -27,7 +27,6 @@ namespace TypedWorkflow.Common
         public TwContextBuilder()
         {
             _entrypoints = new List<IEntrypoint>();
-            _instances = new List<object>();
             _scopedInstances = new List<(TwComponentFactory, List<int>)>();
             _exportIndex = new List<int[]>();
             _importIndex = new List<int[]>();
@@ -39,7 +38,7 @@ namespace TypedWorkflow.Common
 
         public TwContextBuilder AddEntrypointMethod(MethodInfo method, TwEntrypointPriorityEnum priority)
         {
-            if (_instances.Count > 0)
+            if (_componentsCount > 0)
                 throw new InvalidOperationException("Already created");
 
             var entrypoint = ComponentEntrypoint.Create(method, priority);
@@ -77,40 +76,33 @@ namespace TypedWorkflow.Common
 
         public TwContextBuilder CreateInstances(IResolver resolver)
         {
-            if (_instances.Count > 0)
+            if (_componentsCount > 0)
                 throw new InvalidOperationException("Already created");
 
             _resolver = resolver;
 
             var exportTypes = new List<Type>();
             var instanceIdxs = new Dictionary<Type, int>();
-            var instances = new List<object>();
 
             for (var i = 0; i < _entrypoints.Count; ++i)
             {
                 var entryPoint = _entrypoints[i];
-                object instance;
-                if (i == _initialEntrypointIdx || i == _resultEtrypointIdx)
-                    instance = null;
-                else
+                if (i != _initialEntrypointIdx && i != _resultEtrypointIdx)
                 {
-                    if (instanceIdxs.TryGetValue(entryPoint.InstanceType, out var idx))
+                    if (!instanceIdxs.TryGetValue(entryPoint.InstanceType, out var idx))
                     {
-                        instance = instances[idx];
-                        _scopedInstances[idx].Item2?.Add(i);
+                        idx = _scopedInstances.Count;
+
+                        var constructor = entryPoint.InstanceType.GetConstructors(BindingFlags.Public | BindingFlags.Instance).OrderBy(c => c.GetCustomAttribute<TwConstructorAttribute>() != null ? 0 : 1).FirstOrDefault();
+                        var initialization = entryPoint.InstanceType.GetMethods(BindingFlags.Public | BindingFlags.Static).Where(m => m.GetCustomAttribute<TwInjectAttribute>() != null);
+                        var factory = new TwComponentFactory(initialization, constructor, resolver);
+                        _scopedInstances.Add((factory, new List<int>()));
+                        instanceIdxs.Add(entryPoint.InstanceType, _componentsCount++);
                     }
-                    else
-                    {
-                        var isSingleton = entryPoint.InstanceType.GetCustomAttribute<TwSingletonAttribute>() != null;
-                        var constructor = entryPoint.InstanceType.GetConstructors(BindingFlags.Public | BindingFlags.Instance).OrderBy(c => c.GetCustomAttribute<TwConstructorAttribute>() != null ? 0 : 1).First();
-                        var factory = new TwComponentFactory(constructor);
-                        _scopedInstances.Add((factory, isSingleton ? null : new List<int>(new[] { i })));
-                        instance = isSingleton ? factory.CreateInstance(_resolver) : null;
-                        instanceIdxs.Add(entryPoint.InstanceType, instances.Count);
-                        instances.Add(instance);
-                    }
+
+                    if (!entryPoint.IsSingleton)
+                        _scopedInstances[idx].Item2.Add(i);
                 }
-                _instances.Add(instance);
 
                 var exportIndex = GetExportIndex(exportTypes, entryPoint.Export, entryPoint.InstanceType);
                 _exportIndex.Add(exportIndex);
@@ -148,13 +140,13 @@ namespace TypedWorkflow.Common
 
         public TwContext Build()
         {
-            if (_instances.Count == 0)
+            if (_componentsCount == 0)
                 throw new InvalidOperationException("Is not a created");
 
             if (_contextmeta.IsEmpty)
             {
-                var scopedInstances = _scopedInstances.Where(e => e.Item2 != null).Select(e => (e.Item1, e.Item2.ToArray()));
-                _contextmeta = new TwContextMeta(_entrypoints.ToArray(), _instances.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _constraintIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx, _exportOptionNoneFactories.ToArray(), _exportOptionSomeFactories.ToArray());
+                var scopedInstances = _scopedInstances.Where(e => e.Item2.Count > 0).Select(e => (e.Item1, e.Item2.ToArray()));
+                _contextmeta = new TwContextMeta(_componentsCount, _entrypoints.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _constraintIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx, _exportOptionNoneFactories.ToArray(), _exportOptionSomeFactories.ToArray());
             }
 
             return new TwContext(_contextmeta, _resolver);

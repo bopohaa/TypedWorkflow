@@ -6,7 +6,7 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.Components
 {
-    [TwSingleton, TwConstraint(typeof(ConsumerComponent.FromCache), HasNone = true)]
+    [TwConstraint(typeof(ConsumerComponent.FromCache), HasNone = true)]
     public class ConstrainedComponent
     {
         private static long _runCnt;
@@ -22,7 +22,6 @@ namespace TypedWorkflowTests.Components
             => iteration_cnt / 10 == _runCnt;
     }
 
-    [TwSingleton]
     public class ConstraintComponent
     {
         private static long _runCnt;
@@ -37,7 +36,6 @@ namespace TypedWorkflowTests.Components
             => iteration_cnt == _runCnt;
     }
 
-    [TwSingleton]
     public class ConsumerComponent
     {
         private static long _fromDb;

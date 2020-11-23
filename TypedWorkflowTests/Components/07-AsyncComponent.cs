@@ -4,7 +4,6 @@ using TypedWorkflow;
 
 namespace TypedWorkflowTests.Components
 {
-    [TwSingleton]
     public class AsyncComponent
     {
         private const int DATA1 = 1;

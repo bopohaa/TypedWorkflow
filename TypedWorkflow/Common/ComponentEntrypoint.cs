@@ -33,8 +33,12 @@ namespace TypedWorkflow.Common
         private readonly TwConstraint[] _constraints;
         public TwConstraint[] Constraints => _constraints;
 
-        private ComponentEntrypoint(Type instance_type, ExpressionFactory.Call method, ExpressionFactory.GetProperty<object> task_result_prop, Type[] imports, Type[] exports, TwConstraint[] constraints, FieldInfo[] tuple_fields, TwEntrypointPriorityEnum priority, bool is_async)
+        private readonly bool _isSingleton;
+        public bool IsSingleton => _isSingleton;
+
+        private ComponentEntrypoint(bool is_singleton, Type instance_type, ExpressionFactory.Call method, ExpressionFactory.GetProperty<object> task_result_prop, Type[] imports, Type[] exports, TwConstraint[] constraints, FieldInfo[] tuple_fields, TwEntrypointPriorityEnum priority, bool is_async)
         {
+            _isSingleton = is_singleton;
             _method = method;
             _taskResultPoperty = task_result_prop;
             _tupleFields = tuple_fields;
@@ -92,7 +96,7 @@ namespace TypedWorkflow.Common
 
             var constraints = GetConstraints(method, type);
 
-            return new ComponentEntrypoint(type, callMethod, getTaskResultProperty, imports, exports, constraints, tupleFields, priority, isAsync);
+            return new ComponentEntrypoint(method.IsStatic, type, callMethod, getTaskResultProperty, imports, exports, constraints, tupleFields, priority, isAsync);
         }
 
         private static TwConstraint[] GetConstraints(MethodInfo method, Type type)
