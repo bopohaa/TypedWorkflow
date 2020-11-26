@@ -53,7 +53,7 @@ namespace TypedWorkflow.Common
         public Type[] Export => Array.Empty<Type>();
         public bool[] ExportIsOption => Array.Empty<bool>();
 
-        public Type InstanceType => typeof(InitialEntrypoint);
+        public Type InstanceType => typeof(ResultEntrypoint);
 
         public TwEntrypointPriorityEnum Priority => (TwEntrypointPriorityEnum)(int.MaxValue);
 

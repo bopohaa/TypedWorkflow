@@ -92,7 +92,7 @@ namespace TypedWorkflow
             if (namespaces.Length == 0)
                 nsComparer = t => true;
             else
-                nsComparer = t => namespaces.Any(ns => t.Namespace?.StartsWith(ns) ?? false);
+                nsComparer = t => namespaces.Any(prefix => IsNamespacePrefix(t.Namespace, prefix));
             var entrypoints = _assemblies.SelectMany(a => a.GetTypes()
                     .Where(t => t.IsClass && (!t.IsAbstract || t.IsSealed) && nsComparer(t))
                     .SelectMany(c => c.FindMembers(MemberTypes.Method, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static, entrypointFilter, null))
@@ -109,6 +109,13 @@ namespace TypedWorkflow
                 .CreateInstances(_resolver);
 
             return new ObjectPool<TwContext>(contextBuilder.Build);
+        }
+
+        private static bool IsNamespacePrefix(string source_ns, string prefix_ns)
+        {
+            if (source_ns is null || !source_ns.StartsWith(prefix_ns)) return false;
+
+            return source_ns.Length == prefix_ns.Length || source_ns[prefix_ns.Length] == '.';
         }
     }
 

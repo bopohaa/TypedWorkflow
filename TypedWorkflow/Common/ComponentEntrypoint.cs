@@ -68,13 +68,16 @@ namespace TypedWorkflow.Common
             ExpandResult(result, output);
         }
 
-        public Task ExecuteAsync(object instance, object[] args, object[] output)
+        public async Task ExecuteAsync(object instance, object[] args, object[] output)
         {
             if (args.Length != Import.Length)
                 throw new InvalidOperationException("Invalid args count");
 
-            return ((Task)_method(instance, args))
-                .ContinueWith(t => ExpandResult(_taskResultPoperty?.Invoke(t), output), TaskContinuationOptions.OnlyOnRanToCompletion);
+            var task = ((Task)_method(instance, args));
+
+            await task;
+            
+            ExpandResult(_taskResultPoperty?.Invoke(task), output);
         }
 
         private static Type[] _valueTupleTypes = new[] { typeof(ValueTuple<>), typeof(ValueTuple<,>), typeof(ValueTuple<,,>), typeof(ValueTuple<,,,>), typeof(ValueTuple<,,,,>), typeof(ValueTuple<,,,,,>), typeof(ValueTuple<,,,,,,>), typeof(ValueTuple<,,,,,,,>) };
