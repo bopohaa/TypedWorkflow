@@ -25,14 +25,13 @@ namespace TypedWorkflow.Common
 
         }
 
-        public object CreateInstance(ISimpleResolver resolver, object[] activate_params_buffer = null)
+        public object CreateInstance(ISimpleResolver resolver, object[] activate_params_buffer)
         {
             if (_activator is null)
                 return null;
 
-            var args = activate_params_buffer ?? CreateActivateParamsBuffer();
-            ResolveArgs(_constructorArgTypes, resolver, args);
-            return _activator(args);
+            ResolveArgs(_constructorArgTypes, resolver, activate_params_buffer);
+            return _activator(activate_params_buffer);
         }
 
         public void TryDisposeInstance(object instance)

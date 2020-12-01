@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 
@@ -13,9 +14,11 @@ namespace TypedWorkflow.Common
         private readonly bool[] _exportInstanceIsNone;
         private readonly object[][] _inputArgs;
         private readonly object[] _output;
-        private object[] _entrypointInstances;
         private readonly IResolver _resolver;
+
         private readonly object[][] _scopedActivatorBuffers;
+        private readonly int[] _entrypopintScopedInstanceIdx;
+        private readonly object[] _scopedInstances;
 
         public TwContext(TwContextMeta meta, IResolver resolver)
         {
@@ -28,23 +31,28 @@ namespace TypedWorkflow.Common
             _output = new object[256];
             for (var i = 0; i < _meta.ImportIndex.Length; ++i)
                 _inputArgs[i] = new object[_meta.ImportIndex[i].Length];
-            _entrypointInstances = new object[meta.Entrypoints.Length];
+
+            _scopedInstances = new object[_meta.ScopedInstances.Length];
+            _entrypopintScopedInstanceIdx = Enumerable.Repeat(-1, meta.Entrypoints.Length).ToArray();
 
             _scopedActivatorBuffers = new object[_meta.ScopedInstances.Length][];
             for (var i = 0; i < _scopedActivatorBuffers.Length; i++)
-                _scopedActivatorBuffers[i] = _meta.ScopedInstances[i].Item1.CreateActivateParamsBuffer();
+            {
+                var e = _meta.ScopedInstances[i];
+                _scopedActivatorBuffers[i] = e.Item1.CreateActivateParamsBuffer();
+                foreach (var idx in e.Item2)
+                    _entrypopintScopedInstanceIdx[idx] = i;
+            }
         }
 
         public async ValueTask<object[]> RunAsync(object[] initial_imports)
         {
-            IDisposable scope = null;
+            var scope = _resolver?.CreateScope();
             try
             {
-                scope = CreateScopedInstances();
                 foreach (var idx in _meta.ExecuteList)
                 {
                     var entry = _meta.Entrypoints[idx];
-                    var instance = _entrypointInstances[idx];
                     var outputArgs = _meta.ExportIndex[idx];
                     var inputArgs = _meta.ImportIndex[idx];
                     var input = _meta.InitialEntrypointIdx == idx ? initial_imports : _inputArgs[idx];
@@ -54,6 +62,8 @@ namespace TypedWorkflow.Common
                         SaveOutputAsNone(outputArgs);
                         continue;
                     }
+
+                    var instance = GetOrCreateInstance(idx);
 
                     if (entry.IsAsync)
                         await entry.ExecuteAsync(instance, input, _output).ConfigureAwait(false);
@@ -149,37 +159,36 @@ namespace TypedWorkflow.Common
             }
         }
 
-        private IDisposable CreateScopedInstances()
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private object GetOrCreateInstance(int entrypoint_idx)
         {
-            var scope = _resolver?.CreateScope();
-            try
+            var instanceIdx = _entrypopintScopedInstanceIdx[entrypoint_idx];
+            if (instanceIdx == -1)
+                return null;
+
+            var instance = _scopedInstances[instanceIdx];
+            if (instance is null)
             {
-                var resolver = (ISimpleResolver)scope ?? _resolver;
-                for (var i = 0; i < _meta.ScopedInstances.Length; i++)
-                {
-                    var e = _meta.ScopedInstances[i];
-                    var activateParamsBuffer = _scopedActivatorBuffers[i];
-                    var instance = e.Item1.CreateInstance(resolver, activateParamsBuffer);
-                    foreach (var idx in e.Item2)
-                        _entrypointInstances[idx] = instance;
-                }
-                return scope;
+                var activateParamsBuffer = _scopedActivatorBuffers[instanceIdx];
+                instance = _meta.ScopedInstances[instanceIdx].Item1.CreateInstance(_resolver, activateParamsBuffer);
+                _scopedInstances[instanceIdx] = instance;
             }
-            catch
-            {
-                scope?.Dispose();
-                throw;
-            }
+
+            return instance;
         }
+
         private void DisposeScopedInstances()
         {
             List<Exception> error = null;
-            foreach (var e in _meta.ScopedInstances)
+            for(var i = 0; i < _scopedInstances.Length; i++)
             {
-                var instance = _entrypointInstances[e.Item2[0]];
-                foreach (var idx in e.Item2)
-                    _entrypointInstances[idx] = null;
-                try { e.Item1.TryDisposeInstance(instance); } catch (Exception ex) { if (error == null) { error = new List<Exception>(); error.Add(ex); } }
+                var instance = _scopedInstances[i];
+                if (instance is null)
+                    continue;
+
+                _scopedInstances[i] = null;
+                try { _meta.ScopedInstances[i].Item1.TryDisposeInstance(instance); } catch (Exception ex) { if (error == null) { error = new List<Exception>(); error.Add(ex); } }
+
             }
             if (error != null)
                 ExceptionDispatchInfo.Capture(new AggregateException(error)).Throw();
