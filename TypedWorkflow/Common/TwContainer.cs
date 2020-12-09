@@ -80,10 +80,13 @@ namespace TypedWorkflow.Common
     {
         private readonly ConstructorInfo _resultTupleConstructor;
         private readonly Func<Task<object[]>, Tr> _success;
+        private readonly TwMemoryCache<T, Tr> _cache;
 
-        public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types) : base(factory, initial_tuple_fields)
+        public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types, TwCache.Options<T,Tr>? cache_options) 
+            : base(factory, initial_tuple_fields)
         {
-            _success = t => GetResult(t.Result);
+            _success = Success;
+            _cache = cache_options.HasValue ? cache_options.Value.CreateCache(RunImpl) : null;
 
             if (result_tuple_types != null)
             {
@@ -92,7 +95,10 @@ namespace TypedWorkflow.Common
             }
         }
 
-        public new ValueTask<Tr> Run(T initial_imports)
+        public new ValueTask<Tr> Run(T initial_imports) =>
+            _cache is null ? RunImpl(initial_imports) : _cache.Get(initial_imports);
+
+        private ValueTask<Tr> RunImpl(T initial_imports)
         {
             var res = Run(GetInitialImports(initial_imports));
             if (res.IsCompleted)
@@ -100,6 +106,9 @@ namespace TypedWorkflow.Common
             var t = res.AsTask().ContinueWith(_success, TaskContinuationOptions.OnlyOnRanToCompletion);
             return new ValueTask<Tr>(t);
         }
+
+        private Tr Success(Task<object[]> successed_task)
+            => GetResult(successed_task.Result);
 
         private Tr GetResult(object[] result)
         {

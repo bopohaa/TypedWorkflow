@@ -15,6 +15,11 @@ namespace TypedWorkflow
         private HashSet<string> _namespaces;
         private IResolver _resolver;
 
+        private bool _cachePresent;
+        private object _externalCache;
+        private TimeSpan _outdateTtl;
+        private TimeSpan _expireTtl;
+
         public TwContainerBuilder()
         {
             _assemblies = new HashSet<Assembly>();
@@ -43,8 +48,38 @@ namespace TypedWorkflow
             return this;
         }
 
+        public TwContainerBuilder SetCache<Tkey, Tval>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> memory_cache)
+        {
+            if (_cachePresent)
+                throw new NotSupportedException("Only one cache present on this time");
+
+            _expireTtl = expire_ttl;
+            _outdateTtl = outdate_ttl;
+            _externalCache = memory_cache;
+            _cachePresent = true;
+
+            return this;
+        }
+
+        public TwContainerBuilder WithCache(TimeSpan expire_ttl, TimeSpan outdate_ttl)
+        {
+            if (_cachePresent)
+                throw new NotSupportedException("Only one cache present on this time");
+
+            _expireTtl = expire_ttl;
+            _outdateTtl = outdate_ttl;
+            _externalCache = null;
+            _cachePresent = true;
+
+            return this;
+        }
+
+
         public ITwContainer Build()
         {
+            if (_cachePresent)
+                throw new NotSupportedException("Cache");
+
             var factory = CreateContextFactory();
 
             return new TwContainer(factory);
@@ -52,6 +87,9 @@ namespace TypedWorkflow
 
         public ITwContainer<T> Build<T>()
         {
+            if (_cachePresent)
+                throw new NotSupportedException("Cache");
+
             var importTypes = GetImports<T>(out var importTupleFields);
             var factory = CreateContextFactory(importTypes);
 
@@ -60,6 +98,8 @@ namespace TypedWorkflow
 
         public ITwContainer<T, Tr> Build<T, Tr>()
         {
+            var cacheOptions = CreateCacheOptionsIfNeded<T, Tr>();
+
             var importTypes = GetImports<T>(out var importTupleFields);
             var export = typeof(Tr);
             var isTupleExport = export.IsGenericType ? _valueTupleTypes.Contains(export.GetGenericTypeDefinition()) : false;
@@ -67,7 +107,7 @@ namespace TypedWorkflow
 
             var factory = CreateContextFactory(importTypes, exportTypes);
 
-            return new TwContainer<T, Tr>(factory, importTupleFields, isTupleExport ? exportTypes : null);
+            return new TwContainer<T, Tr>(factory, importTupleFields, isTupleExport ? exportTypes : null, cacheOptions);
         }
 
         public ITwContainer<Option.Void, Tr> BuildWithResult<Tr>() => Build<Option.Void, Tr>();
@@ -109,6 +149,19 @@ namespace TypedWorkflow
                 .CreateInstances(_resolver);
 
             return new ObjectPool<TwContext>(contextBuilder.Build);
+        }
+
+        private TwCache.Options<Tk, Tv>? CreateCacheOptionsIfNeded<Tk, Tv>()
+        {
+            if (!_cachePresent)
+                return null;
+
+            if (_externalCache == null)
+                return TwCache.CreateOptions<Tk, Tv>(_expireTtl, _outdateTtl);
+
+            var externalCache = _externalCache as ICache<Tk, Tv> ?? throw new NotSupportedException();
+
+            return TwCache.CreateOptions(_expireTtl, _outdateTtl, externalCache);
         }
 
         private static bool IsNamespacePrefix(string source_ns, string prefix_ns)
