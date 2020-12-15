@@ -30,8 +30,8 @@ namespace TypedWorkflow.Common
         public static Options<Tk, Tv> CreateOptions<Tk, Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tk, Tv> external_cache = null)
             => new Options<Tk, Tv>(external_cache, expire_ttl, outdate_ttl);
 
-        public static TwMemoryCache<Tk, Tv> CreateCache<Tk, Tv>(this Options<Tk, Tv> options, Get<Tk, Tv> getter)
-            => new TwMemoryCache<Tk, Tv>(getter, options.ExpireTtl, options.OutdateTtl, options.ExternalCache);
+        public static TwSlidingMemoryCache<Tk, Tv> CreateCache<Tk, Tv>(this Options<Tk, Tv> options, Get<Tk, Tv> getter)
+            => new TwSlidingMemoryCache<Tk, Tv>(getter, options.ExpireTtl, options.OutdateTtl, options.ExternalCache);
     }
 
     internal static class TwMemoryCache<Tk>
@@ -41,7 +41,7 @@ namespace TypedWorkflow.Common
         public static object GetLock(int hash) => _locks[hash % 256];
     }
 
-    internal class TwMemoryCache<Tk, Tv>
+    internal class TwSlidingMemoryCache<Tk, Tv>
     {
         private class TwCacheEntry : ICacheEntry<Tv>
         {
@@ -87,14 +87,14 @@ namespace TypedWorkflow.Common
         private readonly TimeSpan _expireTtl;
         private readonly TwCache.Get<Tk, Tv> _get;
 
-        public TwMemoryCache(TwCache.Get<Tk, Tv> get, TimeSpan expire_ttl, ICache<Tk, Tv> external_cache = null) : this(get, expire_ttl, TimeSpan.Zero, external_cache) { }
+        public TwSlidingMemoryCache(TwCache.Get<Tk, Tv> get, TimeSpan expire_ttl, ICache<Tk, Tv> external_cache = null) : this(get, expire_ttl, TimeSpan.Zero, external_cache) { }
 
-        public TwMemoryCache(TwCache.Get<Tk, Tv> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tk, Tv> external_cache = null)
+        public TwSlidingMemoryCache(TwCache.Get<Tk, Tv> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tk, Tv> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
 
-            _cache = external_cache ?? new TwInternalMemoryCache<Tk, Tv>();
+            _cache = external_cache ?? new TwMemoryCache<Tk, Tv>();
             _outdateTtl = outdate_ttl;
             _expireTtl = expire_ttl;
             _get = get;
@@ -191,69 +191,6 @@ namespace TypedWorkflow.Common
                 _nowSec = (uint)(_nowMs / 1000);
             };
             _timer.Start();
-        }
-    }
-
-    internal class TwInternalMemoryCache<Tk, Tv> : ICache<Tk, Tv>
-    {
-        private const int ExpirationScanFrequencySec = 600;
-        private readonly ConcurrentDictionary<Tk, CacheEntry> _entries = new ConcurrentDictionary<Tk, CacheEntry>();
-        private long _nextExpirationScan = TwCacheTimer.NowSec + ExpirationScanFrequencySec;
-
-        private struct CacheEntry
-        {
-            private readonly long _expireAt;
-            public readonly ICacheEntry<Tv> Value;
-
-            public CacheEntry(ICacheEntry<Tv> value, TimeSpan expire_ttl, long now_sec)
-            {
-                _expireAt = now_sec + expire_ttl.Ticks / TimeSpan.TicksPerSecond;
-                Value = value;
-            }
-
-            public bool IsExpired(long now_sec) => now_sec > _expireAt;
-        }
-
-        public void Set(Tk key, ICacheEntry<Tv> value, TimeSpan expiration_time)
-        {
-            var nowSec = TwCacheTimer.NowSec;
-            var entry = new CacheEntry(value, expiration_time, nowSec);
-            _entries.AddOrUpdate(key, entry, (k, v) => entry);
-
-            StartScanForExpiredItemsIfNeeded(nowSec);
-        }
-
-        public bool TryGet(Tk key, out ICacheEntry<Tv> value)
-        {
-            if (!_entries.TryGetValue(key, out var entry) || entry.IsExpired(TwCacheTimer.NowSec))
-            {
-                value = default;
-                return false;
-            }
-
-            value = entry.Value;
-            return true;
-        }
-
-        private void StartScanForExpiredItemsIfNeeded(long now_sec)
-        {
-            var nextExpirationScan = Volatile.Read(ref _nextExpirationScan);
-            if (now_sec > nextExpirationScan && Interlocked.CompareExchange(ref _nextExpirationScan, now_sec + ExpirationScanFrequencySec, nextExpirationScan) == nextExpirationScan)
-            {
-                Task.Factory.StartNew(ScanForExpiredItems, this,
-                    CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
-            }
-        }
-
-        private static void ScanForExpiredItems(object state)
-        {
-            var cache = (TwInternalMemoryCache<Tk, Tv>)state;
-            var nowSec = TwCacheTimer.NowSec;
-            foreach (var entry in cache._entries.ToArray())
-            {
-                if (entry.Value.IsExpired(nowSec))
-                    cache._entries.TryRemove(entry.Key, out var _);
-            }
         }
     }
 }

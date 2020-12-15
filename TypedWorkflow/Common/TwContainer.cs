@@ -80,7 +80,7 @@ namespace TypedWorkflow.Common
     {
         private readonly ConstructorInfo _resultTupleConstructor;
         private readonly Func<Task<object[]>, Tr> _success;
-        private readonly TwMemoryCache<T, Tr> _cache;
+        private readonly TwSlidingMemoryCache<T, Tr> _cache;
 
         public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types, TwCache.Options<T,Tr>? cache_options) 
             : base(factory, initial_tuple_fields)
