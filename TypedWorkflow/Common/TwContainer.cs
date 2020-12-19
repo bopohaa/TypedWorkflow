@@ -16,9 +16,9 @@ namespace TypedWorkflow.Common
             _complete = Complete;
         }
 
-        public ValueTask Run()
+        public ValueTask Run(CancellationToken cancellation = default(CancellationToken))
         {
-            var res = Run(Array.Empty<object>());
+            var res = Run(new object[] { cancellation });
             return res.IsCompleted ? new ValueTask() : new ValueTask(res.AsTask());
         }
 
@@ -38,40 +38,52 @@ namespace TypedWorkflow.Common
         {
             var context = (TwContext)state;
             _factory.Free(context);
-            return complete?.Result;
+            if (complete is null)
+                return null;
+
+            if (complete.IsFaulted)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(complete.Exception).Throw();
+            if (complete.IsCanceled)
+                throw new TaskCanceledException(complete);
+
+            return complete.Result;
         }
 
     }
 
     internal class TwContainer<T> : TwContainer, ITwContainer<T>
     {
-        private readonly Func<T, object[]> _getInitialImports;
-        protected Func<T, object[]> GetInitialImports => _getInitialImports;
+        private readonly Func<T, CancellationToken, object[]> _getInitialImports;
+        protected Func<T, CancellationToken, object[]> GetInitialImports => _getInitialImports;
 
         public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields) : base(factory)
         {
             if (typeof(T) == typeof(Option.Void))
-                _getInitialImports = e => Array.Empty<object>();
+                _getInitialImports = (e, c) => new object[] { c };
             else if (initial_tuple_fields == null)
                 _getInitialImports = GetInitialImportsImpl;
             else
-                _getInitialImports = v => GetInitialImportsImpl(v, initial_tuple_fields);
+                _getInitialImports = (v, c) => GetInitialImportsImpl(v, initial_tuple_fields, c);
         }
 
-        public ValueTask Run(T initial_imports)
+        public ValueTask Run(T initial_imports, CancellationToken cancellation = default(CancellationToken))
         {
-            var res = Run(GetInitialImports(initial_imports));
+            var res = Run(GetInitialImports(initial_imports, cancellation));
             return res.IsCompleted ? new ValueTask() : new ValueTask(res.AsTask());
         }
 
-        private object[] GetInitialImportsImpl(T initial_imports)
-            => new[] { (object)initial_imports };
+        private object[] GetInitialImportsImpl(T initial_imports, CancellationToken cancellation)
+            => new object[] { initial_imports, cancellation };
 
-        private object[] GetInitialImportsImpl(T initial_imports, FieldInfo[] initial_tuple_fields)
+        private object[] GetInitialImportsImpl(T initial_imports, FieldInfo[] initial_tuple_fields, CancellationToken cancellation)
         {
-            var initialImports = new object[initial_tuple_fields.Length];
+            var initialImports = new object[initial_tuple_fields.Length + 1];
+
             for (int i = 0; i < initial_tuple_fields.Length; ++i)
                 initialImports[i] = initial_tuple_fields[i].GetValue(initial_imports);
+
+            initialImports[initial_tuple_fields.Length] = cancellation;
+
             return initialImports;
         }
     }
@@ -80,13 +92,13 @@ namespace TypedWorkflow.Common
     {
         private readonly ConstructorInfo _resultTupleConstructor;
         private readonly Func<Task<object[]>, Tr> _success;
-        private readonly TwSlidingMemoryCache<T, Tr> _cache;
+        private readonly ProactiveCache.ProCache<T, Tr> _cache;
 
-        public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types, TwCache.Options<T,Tr>? cache_options) 
+        public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types, ProCacheFactory.Options<T, Tr> cache_options)
             : base(factory, initial_tuple_fields)
         {
             _success = Success;
-            _cache = cache_options.HasValue ? cache_options.Value.CreateCache(RunImpl) : null;
+            _cache = cache_options is null ? null : cache_options.CreateCache(RunImpl);
 
             if (result_tuple_types != null)
             {
@@ -95,15 +107,18 @@ namespace TypedWorkflow.Common
             }
         }
 
-        public new ValueTask<Tr> Run(T initial_imports) =>
-            _cache is null ? RunImpl(initial_imports) : _cache.Get(initial_imports);
+        public new ValueTask<Tr> Run(T initial_imports, CancellationToken cancellation) =>
+            _cache is null ? RunImpl(initial_imports, cancellation) : _cache.Get(initial_imports, cancellation);
 
-        private ValueTask<Tr> RunImpl(T initial_imports)
+        private ValueTask<Tr> RunImpl(T initial_imports, CancellationToken cancellation = default(CancellationToken))
         {
-            var res = Run(GetInitialImports(initial_imports));
+            var res = Run(GetInitialImports(initial_imports, cancellation));
+
             if (res.IsCompleted)
                 return new ValueTask<Tr>(GetResult(res.Result));
+
             var t = res.AsTask().ContinueWith(_success, TaskContinuationOptions.OnlyOnRanToCompletion);
+
             return new ValueTask<Tr>(t);
         }
 

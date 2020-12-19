@@ -180,7 +180,7 @@ namespace TypedWorkflow.Common
         private static void CheckUseExports(List<Type> exportTypes, List<int[]> import_index, List<int[]> export_index, List<IEntrypoint> entrypoints)
         {
             var imports = import_index.SelectMany(e => e).Distinct().ToArray();
-            var notusedexports = export_index.SelectMany(e => e).Except(imports).ToArray();
+            var notusedexports = export_index.SelectMany(e => e).Except(imports).Where(e => exportTypes[e] != typeof(System.Threading.CancellationToken)).ToArray();
             if (notusedexports.Length > 0)
             {
                 var badComponents = new StringBuilder("Find unused export(s) value in type(s):");

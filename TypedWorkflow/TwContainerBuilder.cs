@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 
 using TypedWorkflow.Common;
 
@@ -48,7 +49,7 @@ namespace TypedWorkflow
             return this;
         }
 
-        public TwContainerBuilder SetCache<Tkey, Tval>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> memory_cache)
+        public TwContainerBuilder SetCache<Tkey, Tval>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tkey, Tval> memory_cache)
         {
             if (_cachePresent)
                 throw new NotSupportedException("Only one cache present on this time");
@@ -80,7 +81,8 @@ namespace TypedWorkflow
             if (_cachePresent)
                 throw new NotSupportedException("Cache");
 
-            var factory = CreateContextFactory();
+            var importTypes = GetImports<Option.Void>(out var _);
+            var factory = CreateContextFactory(importTypes);
 
             return new TwContainer(factory);
         }
@@ -118,11 +120,13 @@ namespace TypedWorkflow
             var isVoidImport = import == typeof(Option.Void);
             var isTupeImport = import.IsGenericType ? _valueTupleTypes.Contains(import.GetGenericTypeDefinition()) : false;
             importTupleFields = isTupeImport ? import.GetFields() : null;
-            var importTypes = isVoidImport ? null : isTupeImport ? import.GenericTypeArguments : new[] { import };
+            var importTypes = isVoidImport ? new[] { typeof(CancellationToken) } : 
+                isTupeImport ? import.GenericTypeArguments.Concat(new[] { typeof(CancellationToken) }).ToArray() :
+                new[] { import, typeof(CancellationToken) };
             return importTypes;
         }
 
-        private ObjectPool<TwContext> CreateContextFactory(Type[] initial_imports = null, Type[] result_exports = null)
+        private ObjectPool<TwContext> CreateContextFactory(Type[] initial_imports, Type[] result_exports = null)
         {
             var contextBuilder = new TwContextBuilder();
 
@@ -143,6 +147,7 @@ namespace TypedWorkflow
                 var infoAtt = entrypoint.GetCustomAttribute<TwEntrypointAttribute>();
                 contextBuilder.AddEntrypointMethod(entrypoint, infoAtt.Priority);
             }
+
             contextBuilder
                 .RegisterInitialImports(initial_imports)
                 .RegisterResultExports(result_exports)
@@ -151,17 +156,17 @@ namespace TypedWorkflow
             return new ObjectPool<TwContext>(contextBuilder.Build);
         }
 
-        private TwCache.Options<Tk, Tv>? CreateCacheOptionsIfNeded<Tk, Tv>()
+        private ProCacheFactory.Options<Tk, Tv> CreateCacheOptionsIfNeded<Tk, Tv>()
         {
             if (!_cachePresent)
                 return null;
 
             if (_externalCache == null)
-                return TwCache.CreateOptions<Tk, Tv>(_expireTtl, _outdateTtl);
+                return ProCacheFactory.CreateOptions<Tk, Tv>(_expireTtl, _outdateTtl);
 
-            var externalCache = _externalCache as ICache<Tk, Tv> ?? throw new NotSupportedException();
+            var externalCache = _externalCache as ProactiveCache.ICache<Tk, Tv> ?? throw new NotSupportedException();
 
-            return TwCache.CreateOptions(_expireTtl, _outdateTtl, externalCache);
+            return ProCacheFactory.CreateOptions(_expireTtl, _outdateTtl, externalCache);
         }
 
         private static bool IsNamespacePrefix(string source_ns, string prefix_ns)
