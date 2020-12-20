@@ -131,6 +131,59 @@ public class SimpleComponent
 }
 ```
 
+## Cancel execution
+To cancel the long execution of the component graph, a special token `System.Threading.CancellationToken` is used, which is passed when the` Run` execution method is started as an additional optional parameter.
+```C#
+var componentType = typeof(TypedWorkflowTests.OtherComponents.AsyncCancellationTest.WoInputAndOutput.LongTimeExecutionComponent);
+var builder = new TwContainerBuilder();
+var container = builder
+    .AddAssemblies(componentType.Assembly)
+    .AddNamespaces(componentType.Namespace)
+    .Build();
+
+var cancellation = new CancellationTokenSource();
+var t = container.Run(cancellation.Token).AsTask();
+
+Task.Delay(500).Wait();
+
+cancellation.Cancel();
+
+var ex = Assert.CatchAsync<TaskCanceledException>(() => t);
+```
+The framework does not interact with this token in any way, so all work with it must be implemented inside the handler method of the custom component (passed as one of the parameters of the call to the handler method).
+```C#
+public class LongTimeExecutionComponent
+{
+    [TwEntrypoint]
+    public async Task Run(CancellationToken cancellation)
+    {
+        await Task.Delay(-1, cancellation);
+    }
+}
+```
+
+## Caching work results
+The `cache-aside` template implemented in the proactive cache from the` ProactiveCache` library is used.
+Using the cache allows you to save the results of the execution of the graph of components in memory for a specified time with a specified background update on demand (proactive update).
+Caching is available only for systems with input and output parameters (passing parameters and returning results), where the input parameters will become the key value in the cache,
+and the results of work are cached value.
+```C#
+var builder = new TwContainerBuilder();
+var container = builder
+    .AddAssemblies(typeof(SlowProducerComponent).Assembly)
+    .AddNamespaces(typeof(SlowProducerComponent).Namespace)
+    .WithCache(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1))
+    .Build<int, long>();
+
+var result1 = container.Run(42).Result;
+var result2 = container.Run(42).Result;
+```
+In the example, the `int` type will be used as the key, and the returned result with the` long` type will be used as the cached value.
+`result1` will be obtained after the execution of the given component graph from the` typeof (SlowProducerComponent) .Namespace` namespace.
+`result2` will be taken from the cache in memory and equal to the value in` result1`.
+After the expiration of one second (the second parameter of the `WithCache` method), the subsequent request will re-execute the graph, and the immediately following request will receive the old value from the cache.
+Completing the re-execution of the graph will update the value in the cache and specify the lifetime of this value in two seconds (the first parameter of the `WithCache` method).
+
 ## Optional parameters
 Skip execution of a handler method depending on the value of the result.
 If the result model is wrapped in a `TypedWorkflow.Option` wrapper, then it will allow returning an empty value as a response.
