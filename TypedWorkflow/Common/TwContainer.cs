@@ -19,7 +19,7 @@ namespace TypedWorkflow.Common
         public ValueTask Run(CancellationToken cancellation = default(CancellationToken))
         {
             var res = Run(new object[] { cancellation });
-            return res.IsCompleted ? new ValueTask() : new ValueTask(res.AsTask());
+            return res.IsCompletedSuccessfully ? new ValueTask() : new ValueTask(res.AsTask());
         }
 
         protected ValueTask<object[]> Run(object[] initial_imports)
@@ -69,7 +69,7 @@ namespace TypedWorkflow.Common
         public ValueTask Run(T initial_imports, CancellationToken cancellation = default(CancellationToken))
         {
             var res = Run(GetInitialImports(initial_imports, cancellation));
-            return res.IsCompleted ? new ValueTask() : new ValueTask(res.AsTask());
+            return res.IsCompletedSuccessfully ? new ValueTask() : new ValueTask(res.AsTask());
         }
 
         private object[] GetInitialImportsImpl(T initial_imports, CancellationToken cancellation)
@@ -114,7 +114,7 @@ namespace TypedWorkflow.Common
         {
             var res = Run(GetInitialImports(initial_imports, cancellation));
 
-            if (res.IsCompleted)
+            if (res.IsCompletedSuccessfully)
                 return new ValueTask<Tr>(GetResult(res.Result));
 
             var t = res.AsTask().ContinueWith(_success, TaskContinuationOptions.OnlyOnRanToCompletion);
