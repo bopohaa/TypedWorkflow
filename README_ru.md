@@ -129,6 +129,59 @@ public class SimpleComponent
 }
 ```
 
+## Отмена выполнения
+Для отмены продолжительного выполнения графа компонентов используется специальный токен `System.Threading.CancellationToken`, который передается при запуске меода выполнения `Run` в качестве дополнительного необязательного параметра.
+```C#
+var componentType = typeof(TypedWorkflowTests.OtherComponents.AsyncCancellationTest.WoInputAndOutput.LongTimeExecutionComponent);
+var builder = new TwContainerBuilder();
+var container = builder
+    .AddAssemblies(componentType.Assembly)
+    .AddNamespaces(componentType.Namespace)
+    .Build();
+
+var cancellation = new CancellationTokenSource();
+var t = container.Run(cancellation.Token).AsTask();
+
+Task.Delay(500).Wait();
+
+cancellation.Cancel();
+
+var ex = Assert.CatchAsync<TaskCanceledException>(() => t);
+```
+Фреймворк никак не взаимодействует с этим токеном поэтому вся работа с ним должна быть реализована внутри метода-обработчика пользовательского компонента (передается в качестве одного из параметров вызова метода-обработчика).
+```C#
+public class LongTimeExecutionComponent
+{
+    [TwEntrypoint]
+    public async Task Run(CancellationToken cancellation)
+    {
+        await Task.Delay(-1, cancellation);
+    }
+}
+```
+
+## Кеширование результатов работы
+Используется шаблон `cache-aside` реализуемый в проактивном кеше из библиотеки `ProactiveCache`.
+Использование кеша позволяет сохранять результаты выполнения графа компонентов в памяти на указанное время с указанным фоновым обновлением по требованию (упреждающее обновление).
+Кеширование доступно только для систем с входными и выходными параметрами (передача параметров и возвращение результатов), где входные параметры станут значением ключа в кеше,
+а результаты работы кешируемым значением.
+```C#
+var builder = new TwContainerBuilder();
+var container = builder
+    .AddAssemblies(typeof(SlowProducerComponent).Assembly)
+    .AddNamespaces(typeof(SlowProducerComponent).Namespace)
+    .WithCache(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1))
+    .Build<int, long>();
+
+var result1 = container.Run(42).Result;
+var result2 = container.Run(42).Result;
+```
+В примере в качестве ключа будет использован тип `int`, а в качестве кешируемого значения возвращаемый результат с типом `long`.
+`result1` будет получен после выполениня заданного графа компонентов из пространства имен `typeof(SlowProducerComponent).Namespace`.
+`result2` будет взят из кеша в памяти и будет равен значению в `result1`.
+По истечению времени в одну секунду (второй параметр метода `WithCache`), последующий запрос приведет к повторному выполнению графа, а незамедлительно следующий за ним запрос получит старое значение из кеша.
+Завершение повторного выполнения графа приведет к обновлению значения в кеше и указанию времени жизни этого значения в две секунды (первый параметр метода `WithCache`).
+
 ## Необязательные параметры
 Позволяют пропускать выполнение метода-обработчика в зависимости от значения результата.
 Если модель результата поместить в обертку `TypedWorkflow.Option`, то это позволит возвращать пустое значение в качестве ответа.
