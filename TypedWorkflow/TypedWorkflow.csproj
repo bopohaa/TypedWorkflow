@@ -13,7 +13,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>workflow type graph ioc di framework</PackageTags>
     <PackageIcon>icon.png</PackageIcon>
-    <Version>1.5.1</Version>
+    <Version>1.5.2</Version>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
@@ -22,7 +22,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ProactiveCache" Version="1.0.0" />
+    <PackageReference Include="ProactiveCache" Version="1.0.1" />
     <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
   </ItemGroup>
 
