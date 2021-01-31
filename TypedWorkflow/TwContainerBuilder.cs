@@ -10,8 +10,6 @@ namespace TypedWorkflow
 {
     public class TwContainerBuilder
     {
-        private static Type[] _valueTupleTypes = new[] { typeof(ValueTuple<>), typeof(ValueTuple<,>), typeof(ValueTuple<,,>), typeof(ValueTuple<,,,>), typeof(ValueTuple<,,,,>), typeof(ValueTuple<,,,,,>), typeof(ValueTuple<,,,,,,>), typeof(ValueTuple<,,,,,,,>) };
-
         private HashSet<Assembly> _assemblies;
         private HashSet<string> _namespaces;
         private IResolver _resolver;
@@ -104,12 +102,10 @@ namespace TypedWorkflow
 
             var importTypes = GetImports<T>(out var importTupleFields);
             var export = typeof(Tr);
-            var isTupleExport = export.IsGenericType ? _valueTupleTypes.Contains(export.GetGenericTypeDefinition()) : false;
-            var exportTypes = isTupleExport ? export.GenericTypeArguments : new[] { export };
+            var isTupleExport = ValueTupleUtils.TryUnwrap(export, out var exportTupleTypes);
+            var factory = CreateContextFactory(importTypes, isTupleExport ? exportTupleTypes : new[] { export });
 
-            var factory = CreateContextFactory(importTypes, exportTypes);
-
-            return new TwContainer<T, Tr>(factory, importTupleFields, isTupleExport ? exportTypes : null, cacheOptions);
+            return new TwContainer<T, Tr>(factory, importTupleFields, isTupleExport ? exportTupleTypes : null, cacheOptions);
         }
 
         public ITwContainer<Option.Void, Tr> BuildWithResult<Tr>() => Build<Option.Void, Tr>();
@@ -118,12 +114,9 @@ namespace TypedWorkflow
         {
             var import = typeof(T);
             var isVoidImport = import == typeof(Option.Void);
-            var isTupeImport = import.IsGenericType ? _valueTupleTypes.Contains(import.GetGenericTypeDefinition()) : false;
-            importTupleFields = isTupeImport ? import.GetFields() : null;
-            var importTypes = isVoidImport ? new[] { typeof(CancellationToken) } : 
-                isTupeImport ? import.GenericTypeArguments.Concat(new[] { typeof(CancellationToken) }).ToArray() :
-                new[] { import, typeof(CancellationToken) };
-            return importTypes;
+            var importTypes = ValueTupleUtils.TryUnwrap(import, out var tupleTypes, out importTupleFields) ? tupleTypes :
+                isVoidImport ? Array.Empty<Type>() : Enumerable.Repeat(import, 1);
+            return importTypes.Concat(Enumerable.Repeat(typeof(CancellationToken), 1)).ToArray();
         }
 
         private ObjectPool<TwContext> CreateContextFactory(Type[] initial_imports, Type[] result_exports = null)
