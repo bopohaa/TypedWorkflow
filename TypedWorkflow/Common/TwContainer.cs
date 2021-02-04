@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -92,13 +94,11 @@ namespace TypedWorkflow.Common
     {
         private readonly ConstructorInfo _resultTupleConstructor;
         private readonly Func<Task<object[]>, Tr> _success;
-        private readonly ProactiveCache.ProCache<T, Tr> _cache;
 
-        public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types, ProCacheFactory.Options<T, Tr> cache_options)
+        public TwContainer(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types)
             : base(factory, initial_tuple_fields)
         {
             _success = Success;
-            _cache = cache_options is null ? null : cache_options.CreateCache(RunImpl);
 
             if (result_tuple_types != null)
             {
@@ -107,10 +107,10 @@ namespace TypedWorkflow.Common
             }
         }
 
-        public new ValueTask<Tr> Run(T initial_imports, CancellationToken cancellation) =>
-            _cache is null ? RunImpl(initial_imports, cancellation) : _cache.Get(initial_imports, cancellation);
+        public ValueTask<Tr> Run(T initial_imports, CancellationToken cancellation = default(CancellationToken))
+            => RunImpl(initial_imports, cancellation);
 
-        private ValueTask<Tr> RunImpl(T initial_imports, CancellationToken cancellation = default(CancellationToken))
+        protected ValueTask<Tr> RunImpl(T initial_imports, CancellationToken cancellation)
         {
             var res = Run(GetInitialImports(initial_imports, cancellation));
 
@@ -135,6 +135,35 @@ namespace TypedWorkflow.Common
 
             return (Tr)result[0];
         }
+    }
+
+
+    internal class TwContainerWithCache<T, Tr> : TwContainer<T,Tr>, ITwContainer<T, Tr>
+    {
+        private readonly ProactiveCache.ProCache<T, Tr> _cache;
+
+        public TwContainerWithCache(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types, ProCacheFactory.Options<T, Tr> cache_options)
+            : base(factory, initial_tuple_fields, result_tuple_types)
+        {
+            _cache = cache_options.CreateCache(RunImpl);
+        }
+
+        public new ValueTask<Tr> Run(T initial_imports, CancellationToken cancellation) 
+            => _cache.Get(initial_imports, cancellation);
+    }
+
+    internal class TwContainerWithCacheBatch<T, Tr> : TwContainer<IEnumerable<T>, IEnumerable<KeyValuePair<T, Tr>>>, ITwContainer<IEnumerable<T>, IEnumerable<KeyValuePair<T,Tr>>>
+    {
+        private readonly ProactiveCache.ProCacheBatch<T, Tr> _cache;
+
+        public TwContainerWithCacheBatch(ObjectPool<TwContext> factory, FieldInfo[] initial_tuple_fields, Type[] result_tuple_types, ProCacheFactory.Options<T, Tr> cache_options)
+            : base(factory, initial_tuple_fields, result_tuple_types)
+        {
+            _cache = cache_options.CreateCache(RunImpl);
+        }
+
+        public new ValueTask<IEnumerable<KeyValuePair<T, Tr>>> Run(IEnumerable<T> initial_imports, CancellationToken cancellation = default)
+            => _cache.Get(initial_imports, cancellation);
     }
 
 }

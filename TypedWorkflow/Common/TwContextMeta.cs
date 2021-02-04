@@ -2,7 +2,7 @@
 
 namespace TypedWorkflow.Common
 {
-    internal struct TwContextMeta
+    internal class TwContextMeta
     {
         public readonly int ComponentsCount;
         public readonly IEntrypoint[] Entrypoints;
@@ -32,9 +32,5 @@ namespace TypedWorkflow.Common
             ExportOptionNoneFactories = export_none_factories;
             ExportOptionSomeFactories = export_some_factories;
         }
-
-        public bool IsEmpty => Entrypoints == null;
-
-       
     }
 }

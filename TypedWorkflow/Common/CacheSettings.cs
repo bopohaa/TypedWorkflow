@@ -1,24 +1,38 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
+
+using ProactiveCache;
 
 namespace TypedWorkflow.Common
 {
     internal class CacheSettings
     {
-        private readonly bool _batchedCache;
-        private readonly Type _keyType;
-        private readonly Type _valueType;
-        private readonly TimeSpan _expirationTtl;
-        private readonly TimeSpan _outdateTtl;
+        public readonly bool BatchedCache;
+        public readonly Type[] KeyTypes;
+        public readonly Type[] ValueTypes;
+        public readonly TimeSpan ExpirationTtl;
+        public readonly TimeSpan OutdateTtl;
+        public readonly object ExternalCache;
 
-        public CacheSettings(bool batched_cache, Type key_type, Type value_type, TimeSpan expiration_ttl, TimeSpan outdate_ttl)
+        private CacheSettings(bool batched_cache, Type[] key_types, Type[] value_types, TimeSpan expiration_ttl, TimeSpan outdate_ttl, object external_cache)
         {
-            _batchedCache = batched_cache;
-            _keyType = key_type;
-            _valueType = value_type;
-            _expirationTtl = expiration_ttl;
-            _outdateTtl = outdate_ttl;
+            BatchedCache = batched_cache;
+            KeyTypes = key_types;
+            ValueTypes = value_types;
+            ExpirationTtl = expiration_ttl;
+            OutdateTtl = outdate_ttl;
+            ExternalCache = external_cache;
+        }
+
+        public static CacheSettings Create<Tk, Tv>(bool batched_cache, TimeSpan expiration_ttl, TimeSpan outdate_ttl, ICache<Tk, Tv> external_cache = null)
+        {
+            var keyType = typeof(Tk);
+            var valueType = typeof(Tv);
+            if (!ValueTupleUtils.TryUnwrap(keyType, out var keyTypes))
+                keyTypes = new[] { keyType };
+            if (!ValueTupleUtils.TryUnwrap(valueType, out var valueTypes))
+                valueTypes = new[] { valueType };
+
+            return new CacheSettings(batched_cache, keyTypes, valueTypes, expiration_ttl, outdate_ttl, external_cache);
         }
     }
 }

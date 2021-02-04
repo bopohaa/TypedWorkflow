@@ -8,21 +8,19 @@ using TypedWorkflow.Common;
 
 namespace TypedWorkflow
 {
-    public class TwContainerBuilder
+    public sealed class TwContainerBuilder
     {
-        private HashSet<Assembly> _assemblies;
-        private HashSet<string> _namespaces;
+        private readonly HashSet<Assembly> _assemblies;
+        private readonly HashSet<string> _namespaces;
+        private readonly List<IEntrypoint> _entrypoints;
+        //private readonly Dictionary<Type, CacheSettings> _executionDomains;
         private IResolver _resolver;
-
-        private bool _cachePresent;
-        private object _externalCache;
-        private TimeSpan _outdateTtl;
-        private TimeSpan _expireTtl;
 
         public TwContainerBuilder()
         {
             _assemblies = new HashSet<Assembly>();
             _namespaces = new HashSet<string>();
+            _entrypoints = new List<IEntrypoint>();
         }
 
         public TwContainerBuilder AddAssemblies(params Assembly[] assemblies)
@@ -47,68 +45,46 @@ namespace TypedWorkflow
             return this;
         }
 
-        public TwContainerBuilder SetCache<Tkey, Tval>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tkey, Tval> memory_cache)
-        {
-            if (_cachePresent)
-                throw new NotSupportedException("Only one cache present on this time");
-
-            _expireTtl = expire_ttl;
-            _outdateTtl = outdate_ttl;
-            _externalCache = memory_cache;
-            _cachePresent = true;
-
-            return this;
-        }
-
-        public TwContainerBuilder WithCache(TimeSpan expire_ttl, TimeSpan outdate_ttl)
-        {
-            if (_cachePresent)
-                throw new NotSupportedException("Only one cache present on this time");
-
-            _expireTtl = expire_ttl;
-            _outdateTtl = outdate_ttl;
-            _externalCache = null;
-            _cachePresent = true;
-
-            return this;
-        }
-
-
         public ITwContainer Build()
         {
-            if (_cachePresent)
-                throw new NotSupportedException("Cache");
-
-            var importTypes = GetImports<Option.Void>(out var _);
-            var factory = CreateContextFactory(importTypes);
+            var factory = CreateContextFactory(GetImports<Option.Void>(out var _));
 
             return new TwContainer(factory);
         }
 
         public ITwContainer<T> Build<T>()
         {
-            if (_cachePresent)
-                throw new NotSupportedException("Cache");
-
             var importTypes = GetImports<T>(out var importTupleFields);
             var factory = CreateContextFactory(importTypes);
 
             return new TwContainer<T>(factory, importTupleFields);
         }
 
+        public ITwContainer<Option.Void, Tr> BuildWithResult<Tr>()
+            => Build<Option.Void, Tr>();
+
         public ITwContainer<T, Tr> Build<T, Tr>()
+            => new TwContainer<T, Tr>(CreateContextFactory<T, Tr>(out var importTupleFields, out var exportTupleTypes), importTupleFields, exportTupleTypes);
+
+        public ITwContainer<Tk, Tv> BuildWithCache<Tk, Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tk, Tv> external_cache = null)
         {
-            var cacheOptions = CreateCacheOptionsIfNeded<T, Tr>();
-
-            var importTypes = GetImports<T>(out var importTupleFields);
-            var export = typeof(Tr);
-            var isTupleExport = ValueTupleUtils.TryUnwrap(export, out var exportTupleTypes);
-            var factory = CreateContextFactory(importTypes, isTupleExport ? exportTupleTypes : new[] { export });
-
-            return new TwContainer<T, Tr>(factory, importTupleFields, isTupleExport ? exportTupleTypes : null, cacheOptions);
+            var factory = CreateContextFactory<Tk, Tv>(out var importTupleFields, out var exportTupleTypes);
+            return new TwContainerWithCache<Tk, Tv>(factory, importTupleFields, exportTupleTypes, ProCacheFactory.CreateOptions(expire_ttl, outdate_ttl, external_cache));
         }
 
-        public ITwContainer<Option.Void, Tr> BuildWithResult<Tr>() => Build<Option.Void, Tr>();
+        public ITwContainer<IEnumerable<Tk>, IEnumerable<KeyValuePair<Tk, Tv>>> BuildWithCacheBatch<Tk, Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tk, Tv> external_cache = null)
+        {
+            var factory = CreateContextFactory<IEnumerable<Tk>, IEnumerable<KeyValuePair<Tk, Tv>>>(out var importTupleFields, out var exportTupleTypes);
+            return new TwContainerWithCacheBatch<Tk, Tv>(factory, importTupleFields, exportTupleTypes, ProCacheFactory.CreateOptions(expire_ttl, outdate_ttl, external_cache));
+        }
+
+        private ObjectPool<TwContext> CreateContextFactory<T, Tr>(out FieldInfo[] import_tuple_fields, out Type[] export_tuple_types)
+        {
+            var importTypes = GetImports<T>(out import_tuple_fields);
+            var export = typeof(Tr);
+            var isTupleExport = ValueTupleUtils.TryUnwrap(export, out export_tuple_types);
+            return CreateContextFactory(importTypes, isTupleExport ? export_tuple_types : new[] { export });
+        }
 
         private static Type[] GetImports<T>(out FieldInfo[] importTupleFields)
         {
@@ -121,8 +97,6 @@ namespace TypedWorkflow
 
         private ObjectPool<TwContext> CreateContextFactory(Type[] initial_imports, Type[] result_exports = null)
         {
-            var contextBuilder = new TwContextBuilder();
-
             var namespaces = _namespaces.ToArray();
             MemberFilter entrypointFilter = (m, o) => m.CustomAttributes.Any(e => e.AttributeType == typeof(TwEntrypointAttribute));
             Func<Type, bool> nsComparer;
@@ -135,13 +109,11 @@ namespace TypedWorkflow
                     .SelectMany(c => c.FindMembers(MemberTypes.Method, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static, entrypointFilter, null))
                     .Cast<MethodInfo>());
 
-            foreach (var entrypoint in entrypoints)
-            {
-                var infoAtt = entrypoint.GetCustomAttribute<TwEntrypointAttribute>();
-                contextBuilder.AddEntrypointMethod(entrypoint, infoAtt.Priority);
-            }
+            AddEntrypoints(entrypoints.Select(m => ComponentEntrypoint.Create(m, m.GetCustomAttribute<TwEntrypointAttribute>().Priority)));
 
+            var contextBuilder = new TwContextBuilder();
             contextBuilder
+                .AddEntrypoints(_entrypoints)
                 .RegisterInitialImports(initial_imports)
                 .RegisterResultExports(result_exports)
                 .CreateInstances(_resolver);
@@ -149,18 +121,10 @@ namespace TypedWorkflow
             return new ObjectPool<TwContext>(contextBuilder.Build);
         }
 
-        private ProCacheFactory.Options<Tk, Tv> CreateCacheOptionsIfNeded<Tk, Tv>()
-        {
-            if (!_cachePresent)
-                return null;
-
-            if (_externalCache == null)
-                return ProCacheFactory.CreateOptions<Tk, Tv>(_expireTtl, _outdateTtl);
-
-            var externalCache = _externalCache as ProactiveCache.ICache<Tk, Tv> ?? throw new NotSupportedException();
-
-            return ProCacheFactory.CreateOptions(_expireTtl, _outdateTtl, externalCache);
-        }
+        private void AddEntrypoint(IEntrypoint entrypoint)
+            => _entrypoints.Add(entrypoint);
+        private void AddEntrypoints(IEnumerable<IEntrypoint> entrypoints)
+            => _entrypoints.AddRange(entrypoints);
 
         private static bool IsNamespacePrefix(string source_ns, string prefix_ns)
         {

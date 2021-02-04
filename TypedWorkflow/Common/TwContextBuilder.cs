@@ -36,13 +36,12 @@ namespace TypedWorkflow.Common
             _exportOptionSomeFactories = new List<ExpressionFactory.Activator>();
         }
 
-        public TwContextBuilder AddEntrypointMethod(MethodInfo method, TwEntrypointPriorityEnum priority)
+        public TwContextBuilder AddEntrypoints(IEnumerable<IEntrypoint> entrypoints)
         {
             if (_componentsCount > 0)
                 throw new InvalidOperationException("Already created");
 
-            var entrypoint = ComponentEntrypoint.Create(method, priority);
-            _entrypoints.Add(entrypoint);
+            _entrypoints.AddRange(entrypoints);
             return this;
         }
 
@@ -87,7 +86,7 @@ namespace TypedWorkflow.Common
             for (var i = 0; i < _entrypoints.Count; ++i)
             {
                 var entryPoint = _entrypoints[i];
-                if (i != _initialEntrypointIdx && i != _resultEtrypointIdx)
+                if (!(entryPoint.InstanceType is null))
                 {
                     if (!instanceIdxs.TryGetValue(entryPoint.InstanceType, out var idx))
                     {
@@ -104,7 +103,7 @@ namespace TypedWorkflow.Common
                         _scopedInstances[idx].Item2.Add(i);
                 }
 
-                var exportIndex = GetExportIndex(exportTypes, entryPoint.Export, entryPoint.InstanceType);
+                var exportIndex = GetExportIndex(exportTypes, entryPoint.Export, entryPoint.InstanceType ?? entryPoint.GetType());
                 _exportIndex.Add(exportIndex);
 
                 var (none, some) = GetExportOptionFactory(entryPoint.Export);
@@ -116,10 +115,10 @@ namespace TypedWorkflow.Common
 
             foreach (var entryPoint in _entrypoints)
             {
-                var importIndex = GetImportIndex(exportTypes, entryPoint.Import, entryPoint.InstanceType);
+                var importIndex = GetImportIndex(exportTypes, entryPoint.Import, entryPoint.InstanceType ?? entryPoint.GetType());
                 _importIndex.Add(importIndex);
 
-                var constraintIndex = GetConstraintIndex(exportTypes, entryPoint.Constraints, entryPoint.InstanceType);
+                var constraintIndex = GetConstraintIndex(exportTypes, entryPoint.Constraints, entryPoint.InstanceType ?? entryPoint.GetType());
                 _constraintIndex.Add(constraintIndex);
             }
 
@@ -135,6 +134,8 @@ namespace TypedWorkflow.Common
                     ResolveDependencyRecurse(idx, new Stack<int>(), exportTypes);
                 }
 
+            _contextmeta = CreateContextMeta();
+
             return this;
         }
 
@@ -143,13 +144,16 @@ namespace TypedWorkflow.Common
             if (_componentsCount == 0)
                 throw new InvalidOperationException("Is not a created");
 
-            if (_contextmeta.IsEmpty)
-            {
-                var scopedInstances = _scopedInstances.Where(e => e.Item2.Count > 0).Select(e => (e.Item1, e.Item2.ToArray()));
-                _contextmeta = new TwContextMeta(_componentsCount, _entrypoints.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _constraintIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx, _exportOptionNoneFactories.ToArray(), _exportOptionSomeFactories.ToArray());
-            }
-
             return new TwContext(_contextmeta, _resolver);
+        }
+
+        private TwContextMeta CreateContextMeta()
+        {
+            if (!(_contextmeta is null))
+                throw new InvalidOperationException("Context meta already created");
+
+            var scopedInstances = _scopedInstances.Where(e => e.Item2.Count > 0).Select(e => (e.Item1, e.Item2.ToArray()));
+            return new TwContextMeta(_componentsCount, _entrypoints.ToArray(), scopedInstances.ToArray(), _exportIndex.ToArray(), _importIndex.ToArray(), _constraintIndex.ToArray(), _executeList.ToArray(), _exportCnt, _initialEntrypointIdx, _resultEtrypointIdx, _exportOptionNoneFactories.ToArray(), _exportOptionSomeFactories.ToArray());
         }
 
         private void ResolveDependencyRecurse(int idx, Stack<int> parent, List<Type> exported_types)
@@ -192,7 +196,7 @@ namespace TypedWorkflow.Common
                     badComponents.Append('(');
                     badComponents.Append(string.Join(", ", export_index[idx].Intersect(notusedexports).Select(e => exportTypes[e].ToString())));
                     badComponents.Append(')');
-                    badComponents.AppendLine(entrypoints[idx].InstanceType.ToString());
+                    badComponents.AppendLine((entrypoints[idx].InstanceType ?? entrypoints[idx].GetType()).ToString());
                 }
                 throw new InvalidOperationException(badComponents.ToString());
             }
