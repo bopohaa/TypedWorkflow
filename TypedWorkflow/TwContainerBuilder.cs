@@ -13,7 +13,7 @@ namespace TypedWorkflow
         private readonly HashSet<Assembly> _assemblies;
         private readonly HashSet<string> _namespaces;
         private readonly List<IEntrypoint> _entrypoints;
-        private readonly Dictionary<(Type,Type), CacheSettings> _executionDomains;
+        private readonly Dictionary<(Type, Type), ExecutionDomainSettings> _executionDomainsSettings;
         private IResolver _resolver;
 
         public TwContainerBuilder()
@@ -21,7 +21,7 @@ namespace TypedWorkflow
             _assemblies = new HashSet<Assembly>();
             _namespaces = new HashSet<string>();
             _entrypoints = new List<IEntrypoint>();
-            _executionDomains = new Dictionary<(Type, Type), CacheSettings>();
+            _executionDomainsSettings = new Dictionary<(Type, Type), ExecutionDomainSettings>();
         }
 
         public TwContainerBuilder AddAssemblies(params Assembly[] assemblies)
@@ -46,7 +46,7 @@ namespace TypedWorkflow
             return this;
         }
 
-        public TwContainerBuilder AddCacheDomain<Tk,Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tk, Tv> external_cache = null)
+        public TwContainerBuilder AddCacheDomain<Tk, Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tk, Tv> external_cache = null)
         {
             AddCacheDomain(false, typeof(Tk), typeof(Tv), expire_ttl, outdate_ttl, external_cache);
             return this;
@@ -58,8 +58,8 @@ namespace TypedWorkflow
         }
 
         private void AddCacheDomain(bool batched, Type key, Type value, TimeSpan expire_ttl, TimeSpan outdate_ttl, object external_cache)
-            => _executionDomains.Add((key, value), CacheSettings.Create(key, value, batched, expire_ttl, outdate_ttl, external_cache));
-        
+            => _executionDomainsSettings.Add((key, value), ExecutionDomainSettings.Create(key, value, (batched, expire_ttl, outdate_ttl, external_cache)));
+
 
         public ITwContainer Build()
         {
@@ -127,6 +127,8 @@ namespace TypedWorkflow
 
             AddEntrypoints(entrypoints.Select(m => ComponentEntrypoint.Create(m, m.GetCustomAttribute<TwEntrypointAttribute>().Priority)));
 
+            CreateExecutionDomains(initial_imports, result_exports);
+
             var contextBuilder = new TwContextBuilder();
             contextBuilder
                 .AddEntrypoints(_entrypoints)
@@ -142,12 +144,45 @@ namespace TypedWorkflow
         private void AddEntrypoints(IEnumerable<IEntrypoint> entrypoints)
             => _entrypoints.AddRange(entrypoints);
 
+        private void CreateExecutionDomains(Type[] initial_imports, Type[] result_exports)
+        {
+            if (_executionDomainsSettings.Count == 0)
+                return;
+            var orderedExecutionDomains = _executionDomainsSettings
+                .Select(e => ExecutionDomain.Create(e.Value, _entrypoints, initial_imports, result_exports))
+                .OrderByDescending(e => e.Entrypoints.Length)
+                .ToList();
+            RemoveNestedExecutionDomains(orderedExecutionDomains);
+        }
+
+        private static void RemoveNestedExecutionDomains(List<ExecutionDomain> ordered_execution_domains)
+        {
+            var cnt = ordered_execution_domains.Count - 1;
+            for (var i = 0; i < cnt; i++)
+            {
+                var current = ordered_execution_domains[i];
+                for (var j = i; j <= cnt; j++)
+                {
+                    var next = ordered_execution_domains[j];
+                    var intersect = current.Entrypoints.Intersect(current.Entrypoints).ToArray();
+                    if (intersect.Length > 0)
+                    {
+                        if (next.Entrypoints.Length != intersect.Length)
+                            throw new InvalidOperationException($"Execution domains '{current.Settings.OriginalKeyType} / {current.Settings.OriginalValueType}' and '{next.Settings.OriginalKeyType} / {next.Settings.OriginalValueType}' do not intersect completely");
+                        ordered_execution_domains.RemoveAt(j);
+                        cnt--;
+                        j--;
+                    }
+                }
+            }
+        }
+
         private static bool IsNamespacePrefix(string source_ns, string prefix_ns)
         {
             if (source_ns is null || !source_ns.StartsWith(prefix_ns)) return false;
 
             return source_ns.Length == prefix_ns.Length || source_ns[prefix_ns.Length] == '.';
         }
-    }
 
+    }
 }
