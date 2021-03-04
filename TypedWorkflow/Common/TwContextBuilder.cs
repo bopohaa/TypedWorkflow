@@ -42,41 +42,18 @@ namespace TypedWorkflow.Common
                 throw new InvalidOperationException("Already created");
 
             _entrypoints.AddRange(entrypoints);
-            return this;
-        }
-
-        public TwContextBuilder RegisterInitialImports(Type[] intial_imports)
-        {
-            if (_initialEntrypointIdx != -1)
-                throw new InvalidOperationException("Initial imports already defined");
-
-            if (intial_imports?.Length > 0)
-            {
-                _initialEntrypointIdx = _entrypoints.Count;
-                _entrypoints.Add(new InitialEntrypoint(intial_imports));
-            }
 
             return this;
         }
-
-        public TwContextBuilder RegisterResultExports(Type[] result_exports)
-        {
-            if (_resultEtrypointIdx != -1)
-                throw new InvalidOperationException("Result exports already defined");
-
-            if (result_exports?.Length > 0)
-            {
-                _resultEtrypointIdx = _entrypoints.Count;
-                _entrypoints.Add(new ResultEntrypoint(result_exports));
-            }
-
-            return this;
-        }
+      
 
         public TwContextBuilder CreateInstances(IResolver resolver)
         {
             if (_componentsCount > 0)
                 throw new InvalidOperationException("Already created");
+
+            _initialEntrypointIdx = _entrypoints.FindIndex(e => e is InitialEntrypoint);
+            _resultEtrypointIdx = _entrypoints.FindIndex(e => e is ResultEntrypoint);
 
             _resolver = resolver;
 

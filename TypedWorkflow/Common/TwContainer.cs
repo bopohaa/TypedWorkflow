@@ -30,7 +30,7 @@ namespace TypedWorkflow.Common
             var res = context.RunAsync(initial_imports);
             if (res.IsCompleted)
             {
-                _complete(null, context);
+                FreeContext(context);
                 return res;
             }
             return new ValueTask<object[]>(res.AsTask().ContinueWith(_complete, context));
@@ -39,9 +39,7 @@ namespace TypedWorkflow.Common
         private object[] Complete(Task<object[]> complete, object state)
         {
             var context = (TwContext)state;
-            _factory.Free(context);
-            if (complete is null)
-                return null;
+            FreeContext(context);
 
             if (complete.IsFaulted)
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(complete.Exception).Throw();
@@ -51,6 +49,8 @@ namespace TypedWorkflow.Common
             return complete.Result;
         }
 
+        private void FreeContext(TwContext context)
+            => _factory.Free(context);
     }
 
     internal class TwContainer<T> : TwContainer, ITwContainer<T>
@@ -107,7 +107,7 @@ namespace TypedWorkflow.Common
             }
         }
 
-        public ValueTask<Tr> Run(T initial_imports, CancellationToken cancellation = default(CancellationToken))
+        public new ValueTask<Tr> Run(T initial_imports, CancellationToken cancellation = default(CancellationToken))
             => RunImpl(initial_imports, cancellation);
 
         protected ValueTask<Tr> RunImpl(T initial_imports, CancellationToken cancellation)

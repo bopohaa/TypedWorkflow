@@ -13,7 +13,7 @@ namespace TypedWorkflow
         private readonly HashSet<Assembly> _assemblies;
         private readonly HashSet<string> _namespaces;
         private readonly List<IEntrypoint> _entrypoints;
-        private readonly Dictionary<(Type, Type), ExecutionDomainSettings> _executionDomainsSettings;
+        private readonly Dictionary<string, ExecutionDomainSettings> _executionDomainsSettings;
         private IResolver _resolver;
 
         public TwContainerBuilder()
@@ -21,7 +21,7 @@ namespace TypedWorkflow
             _assemblies = new HashSet<Assembly>();
             _namespaces = new HashSet<string>();
             _entrypoints = new List<IEntrypoint>();
-            _executionDomainsSettings = new Dictionary<(Type, Type), ExecutionDomainSettings>();
+            _executionDomainsSettings = new Dictionary<string, ExecutionDomainSettings>();
         }
 
         public TwContainerBuilder AddAssemblies(params Assembly[] assemblies)
@@ -46,19 +46,19 @@ namespace TypedWorkflow
             return this;
         }
 
-        public TwContainerBuilder AddCacheDomain<Tk, Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tk, Tv> external_cache = null)
+        public TwContainerBuilder AddCacheDomain<Tk, Tv>(string name, TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tk, Tv> external_cache = null)
         {
-            AddCacheDomain(false, typeof(Tk), typeof(Tv), expire_ttl, outdate_ttl, external_cache);
+            AddCacheDomain(name, false, typeof(Tk), typeof(Tv), expire_ttl, outdate_ttl, external_cache);
             return this;
         }
-        public TwContainerBuilder AddCacheBatchDomain<Tk, Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tk, Tv> external_cache = null)
+        public TwContainerBuilder AddCacheBatchDomain<Tk, Tv>(string name, TimeSpan expire_ttl, TimeSpan outdate_ttl, ProactiveCache.ICache<Tk, Tv> external_cache = null)
         {
-            AddCacheDomain(true, typeof(Tk), typeof(Tv), expire_ttl, outdate_ttl, external_cache);
+            AddCacheDomain(name, true, typeof(Tk), typeof(Tv), expire_ttl, outdate_ttl, external_cache);
             return this;
         }
 
-        private void AddCacheDomain(bool batched, Type key, Type value, TimeSpan expire_ttl, TimeSpan outdate_ttl, object external_cache)
-            => _executionDomainsSettings.Add((key, value), ExecutionDomainSettings.Create(key, value, (batched, expire_ttl, outdate_ttl, external_cache)));
+        private void AddCacheDomain(string name, bool batched, Type key, Type value, TimeSpan expire_ttl, TimeSpan outdate_ttl, object external_cache)
+            => _executionDomainsSettings.Add(name, ExecutionDomainSettings.Create(name, key, value, (batched, expire_ttl, outdate_ttl, external_cache)));
 
 
         public ITwContainer Build()
@@ -125,50 +125,71 @@ namespace TypedWorkflow
                     .SelectMany(c => c.FindMembers(MemberTypes.Method, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static, entrypointFilter, null))
                     .Cast<MethodInfo>());
 
-            AddEntrypoints(entrypoints.Select(m => ComponentEntrypoint.Create(m, m.GetCustomAttribute<TwEntrypointAttribute>().Priority)));
+            var allEntrypoints = new List<IEntrypoint>(_entrypoints);
+            allEntrypoints.AddRange(entrypoints.Select(m => ComponentEntrypoint.Create(m, m.GetCustomAttribute<TwEntrypointAttribute>().Priority)));
+            AddBuiltinEntrypoints(initial_imports, result_exports, allEntrypoints);
 
-            CreateExecutionDomains(initial_imports, result_exports);
+            CheckDomainWithInitialImports(initial_imports);
+            CheckDomainWithResultExports(result_exports);
+            var executionDomains = CreateExecutionDomains(allEntrypoints, new[] { typeof(CancellationToken) });
+            var rootEntrypoints = allEntrypoints.Except(executionDomains.SelectMany(d => d.Entrypoints));
 
             var contextBuilder = new TwContextBuilder();
             contextBuilder
-                .AddEntrypoints(_entrypoints)
-                .RegisterInitialImports(initial_imports)
-                .RegisterResultExports(result_exports)
+                .AddEntrypoints(rootEntrypoints)
                 .CreateInstances(_resolver);
 
             return new ObjectPool<TwContext>(contextBuilder.Build);
         }
 
-        private void AddEntrypoint(IEntrypoint entrypoint)
-            => _entrypoints.Add(entrypoint);
-        private void AddEntrypoints(IEnumerable<IEntrypoint> entrypoints)
-            => _entrypoints.AddRange(entrypoints);
-
-        private void CreateExecutionDomains(Type[] initial_imports, Type[] result_exports)
+        private void CheckDomainWithInitialImports(Type[] initial_imports)
         {
-            if (_executionDomainsSettings.Count == 0)
+            if (initial_imports is null || initial_imports.Length == 0)
                 return;
-            var orderedExecutionDomains = _executionDomainsSettings
-                .Select(e => ExecutionDomain.Create(e.Value, _entrypoints, initial_imports, result_exports))
-                .OrderByDescending(e => e.Entrypoints.Length)
-                .ToList();
-            RemoveNestedExecutionDomains(orderedExecutionDomains);
+            var invalidDomain = _executionDomainsSettings.Where(e => e.Value.ValueTypes.Intersect(initial_imports).Any()).Select(e => e.Value).FirstOrDefault();
+            if (invalidDomain is null)
+                return;
+
+            throw new ArgumentException($"Execution domain '{invalidDomain.Name}' produce '{string.Join(", ", invalidDomain.ValueTypes.Intersect(initial_imports))}' of initial import types");
         }
 
-        private static void RemoveNestedExecutionDomains(List<ExecutionDomain> ordered_execution_domains)
+        private void CheckDomainWithResultExports(Type[] result_exports)
         {
-            var cnt = ordered_execution_domains.Count - 1;
+            if (result_exports is null || result_exports.Length == 0)
+                return;
+            var invalidDomain = _executionDomainsSettings.Where(e => e.Value.KeyTypes.Intersect(result_exports).Any()).Select(e => e.Value).FirstOrDefault();
+            if (invalidDomain is null)
+                return;
+
+            throw new ArgumentException($"Execution domain '{invalidDomain.Name}' conusume '{string.Join(", ", invalidDomain.ValueTypes.Intersect(result_exports))}' of result export types");
+        }
+
+        private IReadOnlyList<ExecutionDomain> CreateExecutionDomains(IReadOnlyList<IEntrypoint> entrypoints, Type[] optional_imports)
+        {
+            if (_executionDomainsSettings.Count == 0)
+                return Array.Empty<ExecutionDomain>();
+
+            var orderedExecutionDomains = _executionDomainsSettings
+                .Select(e => ExecutionDomain.Create(e.Value, entrypoints, optional_imports))
+                .OrderByDescending(e => e.Entrypoints.Length)
+                .ToList();
+
+            GroupingNestedExecutionDomains(orderedExecutionDomains);
+
+            return orderedExecutionDomains;
+        }
+
+        private static void GroupingNestedExecutionDomains(List<ExecutionDomain> ordered_execution_domains)
+        {
+            var cnt = ordered_execution_domains.Count;
             for (var i = 0; i < cnt; i++)
             {
                 var current = ordered_execution_domains[i];
-                for (var j = i; j <= cnt; j++)
+                for (var j = i + 1; j < cnt; j++)
                 {
                     var next = ordered_execution_domains[j];
-                    var intersect = current.Entrypoints.Intersect(current.Entrypoints).ToArray();
-                    if (intersect.Length > 0)
+                    if (current.TryAddAsInnerDomain(next))
                     {
-                        if (next.Entrypoints.Length != intersect.Length)
-                            throw new InvalidOperationException($"Execution domains '{current.Settings.OriginalKeyType} / {current.Settings.OriginalValueType}' and '{next.Settings.OriginalKeyType} / {next.Settings.OriginalValueType}' do not intersect completely");
                         ordered_execution_domains.RemoveAt(j);
                         cnt--;
                         j--;
@@ -184,5 +205,12 @@ namespace TypedWorkflow
             return source_ns.Length == prefix_ns.Length || source_ns[prefix_ns.Length] == '.';
         }
 
+        private static void AddBuiltinEntrypoints(Type[] initial_imports, Type[] result_exports, List<IEntrypoint> allEntrypoints)
+        {
+            if (initial_imports?.Length > 0)
+                allEntrypoints.Add(new InitialEntrypoint(initial_imports));
+            if (result_exports?.Length > 0)
+                allEntrypoints.Add(new ResultEntrypoint(result_exports));
+        }
     }
 }
